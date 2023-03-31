@@ -11,6 +11,11 @@ struct FixedDAG<'a> {
 }
 
 
+fn is_proper_subset(a: &BitSet, b: &BitSet) -> bool {
+    a.is_subset(b) && a.len() < b.len()
+}
+
+
 fn parse_input(path: &str) -> Vec<BitSet> {
     let file = File::open(path).expect("file not found");
     let reader = BufReader::new(file);
@@ -45,14 +50,26 @@ fn nodes_by_size(node_contents: &[BitSet]) -> HashMap<usize, Vec<usize>> {
 }
 
 
-fn extend_edges(graph: &FixedDAG, new_node: &usize) -> Vec<usize> {
-    let mut new_edges: Vec<usize> = vec![];
-    let mut frontier = graph.roots.to_vec();
+fn find_parents(graph: &FixedDAG, new_node: &usize) -> BitSet {
+    let mut new_edges = BitSet::new();
+
+    let mut frontier = {
+        let new_node_contents = &graph.nodes[*new_node];
+        let mut frontier: Vec<usize> = vec![];
+
+        for root in graph.roots.iter() {
+            let root_contents = &graph.nodes[*root];
+            if is_proper_subset(root_contents, new_node_contents) {
+                frontier.push(*root);
+            }
+        }
+
+        frontier
+    };
 
     // BFS
     while frontier.len() > 0 {
         let parent_id = frontier.pop().unwrap();
-        let parent = &graph.nodes[parent_id];
 
         let childs = {
             let edges = &graph.edges[parent_id];
@@ -63,14 +80,14 @@ fn extend_edges(graph: &FixedDAG, new_node: &usize) -> Vec<usize> {
         for child_id in childs {
             let child = &graph.nodes[child_id];
 
-            if graph.nodes[*new_node].is_subset(child) {
+            if is_proper_subset(child, &graph.nodes[*new_node]) {
                 frontier.push(child_id);
                 deadend = false;
             }
         }
 
         if deadend {
-            new_edges.push(parent_id);
+            new_edges.insert(parent_id);
         }
     }
 
@@ -78,17 +95,21 @@ fn extend_edges(graph: &FixedDAG, new_node: &usize) -> Vec<usize> {
 }
 
 
+fn export_graph(path: &str, graph: &FixedDAG) {
+
+}
+
+
 fn main() {
     let path: &str = "data/6.txt";
 
-    // temporary variables
+    // temporary variable
     let node_contents = &parse_input(path)[..]; // nodes are organized by index
-    let mut edges = vec![BitSet::new(); node_contents.len()]; // corresponds to node_contents
 
     // separate nodes into layers (by size)
     let layers: HashMap<usize, Vec<usize>> = nodes_by_size(node_contents);
 
-    // sort layers by size
+    // sort layer keys by size so we iterate higher layers first
     let layer_keys = {
         let mut keys = layers.keys().map(|k| *k).collect::<Vec<usize>>();
         keys.sort_by(|a, b| a.cmp(b));
@@ -97,21 +118,24 @@ fn main() {
 
     let mut graph = FixedDAG {
         nodes: node_contents,
-        edges,
-        roots: layers[&layer_keys[0]].as_slice()
+        edges: vec![BitSet::new(); node_contents.len()],
+        roots: layers[&layer_keys[0]].as_slice(),
     };
 
-    println!("layer_keys: {:?}", layer_keys);
+    for layer_key in layer_keys.iter().skip(1) {
+        // entire layer is handled at once
+        let layer = &layers[layer_key];
 
-    println!("node index: {:?}", graph.nodes);
-
-    println!("roots: {:?}", graph.roots);
-
-    // print
-    for (size, nodes) in layers.iter() {
-        println!("{}: {:?}", size, nodes);
+        for new_node in layer {
+            let new_edges = find_parents(&graph, &new_node);
+            println!("new node: {:?}, new edges: {:?}", new_node, new_edges);
+            for edge in &new_edges {
+                graph.edges[edge].insert(*new_node);
+            }
+        }
     }
 
-    let new_edges = extend_edges(&graph, &0);
-    println!("new_edges: {:?}", new_edges);
+    println!("done");
+    println!("index: {:?}", graph.nodes);
+    println!("edges: {:?}", graph.edges);
 }
