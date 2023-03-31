@@ -55,12 +55,12 @@ fn find_parents(graph: &FixedDAG, new_node: &usize) -> BitSet {
 
     let mut frontier = {
         let new_node_contents = &graph.nodes[*new_node];
-        let mut frontier: Vec<usize> = vec![];
+        let mut frontier = BitSet::new();
 
         for root in graph.roots.iter() {
             let root_contents = &graph.nodes[*root];
             if is_proper_subset(root_contents, new_node_contents) {
-                frontier.push(*root);
+                frontier.insert(*root);
             }
         }
 
@@ -69,7 +69,9 @@ fn find_parents(graph: &FixedDAG, new_node: &usize) -> BitSet {
 
     // BFS
     while frontier.len() > 0 {
-        let parent_id = frontier.pop().unwrap();
+        // frontier.pop()
+        let parent_id = frontier.iter().take(1).next().unwrap();
+        frontier.remove(parent_id);
 
         let childs = {
             let edges = &graph.edges[parent_id];
@@ -81,7 +83,7 @@ fn find_parents(graph: &FixedDAG, new_node: &usize) -> BitSet {
             let child = &graph.nodes[child_id];
 
             if is_proper_subset(child, &graph.nodes[*new_node]) {
-                frontier.push(child_id);
+                frontier.insert(child_id);
                 deadend = false;
             }
         }
@@ -115,7 +117,7 @@ fn export_graph(path: &str, graph: &FixedDAG) {
 
 
 fn main() {
-    let path: &str = "data/6.txt";
+    let path: &str = "data/1109.txt";
 
     // temporary variable
     let node_contents = &parse_input(path)[..]; // nodes are organized by index
@@ -136,22 +138,30 @@ fn main() {
         roots: layers[&layer_keys[0]].as_slice(),
     };
 
+    let t_1 = std::time::Instant::now();
+    let mut n_1_sqrt: usize = 0;
+    let n_2 = node_contents.len() as f64 * node_contents.len() as f64;
+
+    // start the algorithm
     for layer_key in layer_keys.iter().skip(1) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
+        n_1_sqrt += layer.len();
 
         for new_node in layer {
             let new_edges = find_parents(&graph, &new_node);
-            println!("new node: {:?}, new edges: {:?}", new_node, new_edges);
             for edge in &new_edges {
                 graph.edges[edge].insert(*new_node);
             }
         }
+
+        let t_2: f64 = (std::time::Instant::now() - t_1).as_millis() as f64 / 1000 as f64;
+        let n_1 = n_1_sqrt as f64 * n_1_sqrt as f64;
+        let progress = n_1 / n_2;
+        println!("Layer-{} done.\n\t- Progress: {:.2}%", layer_key, progress * 100.0);
+        println!("\t- Current duration: {:?}s", t_2);
     }
 
-    println!("done");
-    println!("index: {:?}", graph.nodes);
-    println!("edges: {:?}", graph.edges);
-
-    export_graph("data/6.soln", &graph);
+    println!("Done. Exporting solution...");
+    export_graph("data/1109.soln", &graph);
 }
