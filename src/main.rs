@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, LineWriter, Write};
 use bit_set::BitSet;
 
 
@@ -96,7 +96,21 @@ fn find_parents(graph: &FixedDAG, new_node: &usize) -> BitSet {
 
 
 fn export_graph(path: &str, graph: &FixedDAG) {
+    let file = File::create(path).unwrap();
+    let mut writer = LineWriter::new(file);
 
+    for (parent_id, edges) in graph.edges.iter().enumerate() {
+        for child_id in edges {
+            let parent = &graph.nodes[parent_id];
+            let child = &graph.nodes[child_id];
+            let parent_str = parent.iter().map(|n| n.to_string()).collect::<Vec<String>>().join(" ");
+            let child_str = child.iter().map(|n| n.to_string()).collect::<Vec<String>>().join(" ");
+            let line = format!("{} -> {}\n", parent_str, child_str);
+            writer.write_all(line.as_bytes()).unwrap();
+        }
+    }
+
+    writer.flush().unwrap();
 }
 
 
@@ -138,4 +152,6 @@ fn main() {
     println!("done");
     println!("index: {:?}", graph.nodes);
     println!("edges: {:?}", graph.edges);
+
+    export_graph("data/6.soln", &graph);
 }
