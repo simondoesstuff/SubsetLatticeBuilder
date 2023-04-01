@@ -1,19 +1,13 @@
+mod traversal;
+mod fixed_dag;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, LineWriter, Write};
 use bit_set::BitSet;
-
-
-struct FixedDAG<'a> {
-    nodes: &'a [BitSet],
-    edges: Vec<BitSet>,
-    roots: &'a [usize],
-}
-
-
-fn is_proper_subset(a: &BitSet, b: &BitSet) -> bool {
-    a.is_subset(b) && a.len() < b.len()
-}
+use rayon::prelude::*;
+use crate::fixed_dag::FixedDAG;
+use crate::traversal::find_parents_dfs;
 
 
 fn parse_input(path: &str) -> Vec<BitSet> {
@@ -50,53 +44,6 @@ fn nodes_by_size(node_contents: &[BitSet]) -> HashMap<usize, Vec<usize>> {
 }
 
 
-fn find_parents(graph: &FixedDAG, new_node: &usize) -> BitSet {
-    let mut new_edges = BitSet::new();
-
-    let mut frontier = {
-        let new_node_contents = &graph.nodes[*new_node];
-        let mut frontier = BitSet::new();
-
-        for root in graph.roots.iter() {
-            let root_contents = &graph.nodes[*root];
-            if is_proper_subset(root_contents, new_node_contents) {
-                frontier.insert(*root);
-            }
-        }
-
-        frontier
-    };
-
-    // BFS
-    while frontier.len() > 0 {
-        // frontier.pop()
-        let parent_id = frontier.iter().take(1).next().unwrap();
-        frontier.remove(parent_id);
-
-        let childs = {
-            let edges = &graph.edges[parent_id];
-            edges.iter().collect::<Vec<usize>>()
-        };
-
-        let mut deadend = true;
-        for child_id in childs {
-            let child = &graph.nodes[child_id];
-
-            if is_proper_subset(child, &graph.nodes[*new_node]) {
-                frontier.insert(child_id);
-                deadend = false;
-            }
-        }
-
-        if deadend {
-            new_edges.insert(parent_id);
-        }
-    }
-
-    return new_edges;
-}
-
-
 fn export_graph(path: &str, graph: &FixedDAG) {
     let file = File::create(path).unwrap();
     let mut writer = LineWriter::new(file);
@@ -116,11 +63,9 @@ fn export_graph(path: &str, graph: &FixedDAG) {
 }
 
 
-fn main() {
-    let path: &str = "data/1109.txt";
-
+fn solve(in_path: &str, out_path: &str) {
     // temporary variable
-    let node_contents = &parse_input(path)[..]; // nodes are organized by index
+    let node_contents = &parse_input(in_path)[..]; // nodes are organized by index
 
     // separate nodes into layers (by size)
     let layers: HashMap<usize, Vec<usize>> = nodes_by_size(node_contents);
@@ -138,30 +83,80 @@ fn main() {
         roots: layers[&layer_keys[0]].as_slice(),
     };
 
+    // timing
     let t_1 = std::time::Instant::now();
     let mut n_1_sqrt: usize = 0;
     let n_2 = node_contents.len() as f64 * node_contents.len() as f64;
+
+    /*
+    for layer_key in layer_keys.iter().skip(1) {
+    // entire layer is handled at once
+    let layer = &layers[layer_key];
+
+    // find the new edges for each new node in parallel and collect them in a vector
+    let new_edges: Vec<(usize, usize)> = layer.par_iter()
+        .flat_map(|new_node| {
+            find_parents_dfs(&graph, &new_node)
+                .into_iter()
+                .map(move |edge| (edge, *new_node))
+        })
+        .collect();
+
+    // append the new edges to the graph in sync
+    let mut edges = graph.edges.write().unwrap();
+    for (edge, new_node) in new_edges {
+        edges[edge].insert(new_node);
+    }
+}
+     */
 
     // start the algorithm
     for layer_key in layer_keys.iter().skip(1) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
-        n_1_sqrt += layer.len();
 
-        for new_node in layer {
-            let new_edges = find_parents(&graph, &new_node);
-            for edge in &new_edges {
-                graph.edges[edge].insert(*new_node);
+        let new_edges: Vec<(&usize, BitSet)> = layer
+            .par_iter()
+            .map(|new_node| {
+                (new_node, find_parents_dfs(&graph, new_node))
+            })
+            .collect(); // collect -- join the threads
+
+        // apply changes in sync
+        for (child, edges) in new_edges {
+            for parent in &edges {
+                graph.edges[parent].insert(*child);
             }
         }
 
+        // timing
+        n_1_sqrt += layer.len();
         let t_2: f64 = (std::time::Instant::now() - t_1).as_millis() as f64 / 1000 as f64;
         let n_1 = n_1_sqrt as f64 * n_1_sqrt as f64;
         let progress = n_1 / n_2;
+        let remaining_time = t_2 * n_2 / n_1 - t_2;
         println!("Layer-{} done.\n\t- Progress: {:.2}%", layer_key, progress * 100.0);
         println!("\t- Current duration: {:?}s", t_2);
+        println!("\t- ETA: {:?}s", remaining_time);
     }
 
     println!("Done. Exporting solution...");
-    export_graph("data/1109.soln", &graph);
+    export_graph(out_path, &graph);
+}
+
+
+fn main() {
+    let args = std::env::args().collect::<Vec<String>>();
+
+    let in_path = if let Some(path) = args.get(1) { path } else {
+        eprintln!("No input file specified");
+        std::process::exit(1);
+    };
+
+    let out_path = if let Some(path) = args.get(2) { path } else {
+        eprintln!("No output file specified");
+        std::process::exit(1);
+    };
+
+    solve(in_path, out_path);
 }
