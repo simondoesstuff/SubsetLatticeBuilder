@@ -8,70 +8,9 @@ fn is_proper_subset(a: &BitSet, b: &BitSet) -> bool {
 }
 
 
-// pub fn find_parents_bfs(graph: &FixedDAG, new_node: &usize) -> BitSet {
-//     let mut new_edges = BitSet::new();
-//
-//     let mut frontier = {
-//         let new_node_contents = &graph.nodes[*new_node];
-//         let mut frontier = BitSet::new();
-//
-//         for root in graph.roots.iter() {
-//             let root_contents = &graph.nodes[*root];
-//             if is_proper_subset(root_contents, new_node_contents) {
-//                 frontier.insert(*root);
-//             }
-//         }
-//
-//         frontier
-//     };
-//
-//     // BFS
-//     while frontier.len() > 0 {
-//         // frontier.pop
-//         let parent_id = frontier.iter().take(1).next().unwrap();
-//         frontier.remove(parent_id);
-//
-//         let childs = {
-//             let edges = &graph.edges[parent_id];
-//             edges.iter().collect::<Vec<usize>>()
-//         };
-//
-//         let mut deadend = true;
-//         for child_id in childs {
-//             let child = &graph.nodes[child_id];
-//
-//             if is_proper_subset(child, &graph.nodes[*new_node]) {
-//                 frontier.insert(child_id);
-//                 deadend = false;
-//             }
-//         }
-//
-//         if deadend {
-//             new_edges.insert(parent_id);
-//         }
-//     }
-//
-//     return new_edges;
-// }
-
-
 pub fn find_parents_dfs(graph: &FixedDAG, new_node: &usize) -> BitSet {
     let mut new_edges = BitSet::new();
-
-    let mut stack = {
-        let new_node_contents = &graph.nodes[*new_node];
-        let mut stack: VecDeque<usize> = VecDeque::new();
-
-        for root in graph.roots.iter() {
-            let root_contents = &graph.nodes[*root];
-            if is_proper_subset(root_contents, new_node_contents) {
-                stack.push_back(*root);
-            }
-        }
-
-        stack
-    };
-
+    let mut stack: VecDeque<usize> = VecDeque::from([graph.nodes.len() - 1]);
     let mut visited: HashSet<usize> = HashSet::default();
 
     while stack.len() > 0 {

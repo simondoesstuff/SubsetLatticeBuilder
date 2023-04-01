@@ -64,11 +64,15 @@ fn export_graph(path: &str, graph: &FixedDAG) {
 
 
 fn solve(in_path: &str, out_path: &str) {
-    // temporary variable
-    let node_contents = &parse_input(in_path)[..]; // nodes are organized by index
+    // temporary variables
+    let mut node_contents = parse_input(in_path); // nodes are organized by index
+    node_contents.push(BitSet::new()); // null node keeps track of roots
+
+    // edges correspond to nodes by index
+    let edges = vec![BitSet::new(); node_contents.len()];
 
     // separate nodes into layers (by size)
-    let layers: HashMap<usize, Vec<usize>> = nodes_by_size(node_contents);
+    let layers: HashMap<usize, Vec<usize>> = nodes_by_size(&node_contents);
 
     // sort layer keys by size so we iterate higher layers first
     let layer_keys = {
@@ -79,14 +83,13 @@ fn solve(in_path: &str, out_path: &str) {
 
     let mut graph = FixedDAG {
         nodes: node_contents,
-        edges: vec![BitSet::new(); node_contents.len()],
-        roots: layers[&layer_keys[0]].as_slice(),
+        edges
     };
 
     // timing
     let t_1 = std::time::Instant::now();
     let mut n_1_sqrt: usize = 0;
-    let n_2 = node_contents.len() as f64 * node_contents.len() as f64;
+    let n_2 = graph.nodes.len() as f64 * graph.nodes.len() as f64;
 
     // start the algorithm
     for layer_key in layer_keys.iter().skip(1) {
@@ -102,9 +105,7 @@ fn solve(in_path: &str, out_path: &str) {
 
         // apply changes in sync
         for (child, edges) in new_edges {
-            for parent in &edges {
-                graph.edges[parent].insert(*child);
-            }
+            graph.apply_parent_edges(child, &edges);
         }
 
         // timing
@@ -117,6 +118,10 @@ fn solve(in_path: &str, out_path: &str) {
         println!("\t- Current duration: {:?}s", t_2);
         println!("\t- ETA: {:?}s", remaining_time);
     }
+
+    // remove null node, which was only used to track roots
+    graph.nodes.pop();
+    graph.edges.pop();
 
     println!("Done. Exporting solution...");
     export_graph(out_path, &graph);
