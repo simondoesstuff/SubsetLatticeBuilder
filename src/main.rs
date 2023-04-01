@@ -88,28 +88,6 @@ fn solve(in_path: &str, out_path: &str) {
     let mut n_1_sqrt: usize = 0;
     let n_2 = node_contents.len() as f64 * node_contents.len() as f64;
 
-    /*
-    for layer_key in layer_keys.iter().skip(1) {
-    // entire layer is handled at once
-    let layer = &layers[layer_key];
-
-    // find the new edges for each new node in parallel and collect them in a vector
-    let new_edges: Vec<(usize, usize)> = layer.par_iter()
-        .flat_map(|new_node| {
-            find_parents_dfs(&graph, &new_node)
-                .into_iter()
-                .map(move |edge| (edge, *new_node))
-        })
-        .collect();
-
-    // append the new edges to the graph in sync
-    let mut edges = graph.edges.write().unwrap();
-    for (edge, new_node) in new_edges {
-        edges[edge].insert(new_node);
-    }
-}
-     */
-
     // start the algorithm
     for layer_key in layer_keys.iter().skip(1) {
         // entire layer is handled at once
