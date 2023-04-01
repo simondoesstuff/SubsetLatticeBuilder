@@ -1,0 +1,176 @@
+root@slb-7:/subsetlatticebuilder#
+root@slb-7:/subsetlatticebuilder#
+root@slb-7:/subsetlatticebuilder#
+root@slb-7:/subsetlatticebuilder# ls
+Cargo.lock  Cargo.toml  data  src  subsetlatticebuilder  target
+root@slb-7:/subsetlatticebuilder# subset-lattice-builder "data/79867.txt" "data/79867.soln"
+Layer-2 done.
+        - Progress: 0.00%
+        - Current duration: 0.0s
+        - ETA: 0.0s
+Layer-3 done.
+        - Progress: 0.00%
+        - Current duration: 0.001s
+        - ETA: 34.82047834417853s
+Layer-4 done.
+        - Progress: 0.02%
+        - Current duration: 0.003s
+        - ETA: 13.308212963123983s
+Layer-5 done.
+        - Progress: 0.10%
+        - Current duration: 0.013s
+        - ETA: 13.024308160353835s
+Layer-6 done.
+        - Progress: 0.34%
+        - Current duration: 0.042s
+        - ETA: 12.13255700868343s
+Layer-7 done.
+        - Progress: 0.53%
+        - Current duration: 0.062s
+        - ETA: 11.589597456752752s
+Layer-8 done.
+        - Progress: 0.63%
+        - Current duration: 0.073s
+        - ETA: 11.584983779066855s
+Layer-9 done.
+        - Progress: 0.68%
+        - Current duration: 0.078s
+        - ETA: 11.413522152927264s
+Layer-10 done.
+        - Progress: 0.73%
+        - Current duration: 0.081s
+        - ETA: 11.079692745513844s
+Layer-11 done.
+        - Progress: 0.79%
+        - Current duration: 0.087s
+        - ETA: 10.909338246165559s
+Layer-12 done.
+        - Progress: 0.87%
+        - Current duration: 0.094s
+        - ETA: 10.767379021898419s
+Layer-13 done.
+        - Progress: 0.94%
+        - Current duration: 0.103s
+        - ETA: 10.799166127388233s
+Layer-14 done.
+        - Progress: 1.03%
+        - Current duration: 0.113s
+        - ETA: 10.911165200244417s
+Layer-15 done.
+        - Progress: 1.12%
+        - Current duration: 0.124s
+        - ETA: 10.995601794660084s
+Layer-16 done.
+        - Progress: 1.25%
+        - Current duration: 0.143s
+        - ETA: 11.308287834688384s
+Layer-17 done.
+        - Progress: 1.48%
+        - Current duration: 0.182s
+        - ETA: 12.098203384210596s
+Layer-18 done.
+        - Progress: 1.91%
+        - Current duration: 0.263s
+        - ETA: 13.48131691437397s
+Layer-19 done.
+        - Progress: 2.57%
+        - Current duration: 0.405s
+        - ETA: 15.352903458278913s
+Layer-20 done.
+        - Progress: 3.42%
+        - Current duration: 0.613s
+        - ETA: 17.286724618523184s
+Layer-21 done.
+        - Progress: 4.35%
+        - Current duration: 0.847s
+        - ETA: 18.606937554270278s
+Layer-22 done.
+        - Progress: 5.43%
+        - Current duration: 1.123s
+        - ETA: 19.54928188285623s
+Layer-23 done.
+        - Progress: 6.93%
+        - Current duration: 1.492s
+        - ETA: 20.02509907270551s
+Layer-24 done.
+        - Progress: 8.82%
+        - Current duration: 1.964s
+        - ETA: 20.31538631297274s
+Layer-25 done.
+        - Progress: 11.17%
+        - Current duration: 2.494s
+        - ETA: 19.83833041222782s
+Layer-26 done.
+        - Progress: 14.78%
+        - Current duration: 3.176s
+        - ETA: 18.316250916065428s
+Layer-27 done.
+        - Progress: 19.23%
+        - Current duration: 4.099s
+        - ETA: 17.21579563528281s
+Layer-28 done.
+        - Progress: 24.46%
+        - Current duration: 5.244s
+        - ETA: 16.194936350659187s
+Layer-29 done.
+        - Progress: 30.15%
+        - Current duration: 6.544s
+        - ETA: 15.16396088923343s
+Layer-30 done.
+        - Progress: 37.50%
+        - Current duration: 8.14s
+        - ETA: 13.565201521761605s
+Layer-31 done.
+        - Progress: 46.95%
+        - Current duration: 10.445s
+        - ETA: 11.800383838700519s
+Layer-32 done.
+        - Progress: 57.76%
+        - Current duration: 13.625s
+        - ETA: 9.9647040020187s
+Layer-33 done.
+        - Progress: 68.72%
+        - Current duration: 17.322s
+        - ETA: 7.883697533341191s
+Layer-34 done.
+        - Progress: 78.55%
+        - Current duration: 21.648s
+        - ETA: 5.912197185276515s
+Layer-35 done.
+        - Progress: 86.42%
+        - Current duration: 27.028s
+        - ETA: 4.246532944483754s
+Layer-36 done.
+        - Progress: 91.88%
+        - Current duration: 32.553s
+        - ETA: 2.8766852218451646s
+Layer-37 done.
+        - Progress: 95.06%
+        - Current duration: 36.663s
+        - ETA: 1.9065615165212577s
+Layer-38 done.
+        - Progress: 97.14%
+        - Current duration: 40.981s
+        - ETA: 1.208297625264386s
+Layer-39 done.
+        - Progress: 98.53%
+        - Current duration: 44.473s
+        - ETA: 0.6621450749678672s
+Layer-40 done.
+        - Progress: 99.33%
+        - Current duration: 46.519s
+        - ETA: 0.31377478559633687s
+Layer-41 done.
+        - Progress: 99.68%
+        - Current duration: 47.591s
+        - ETA: 0.15410983534015088s
+Layer-42 done.
+        - Progress: 99.79%
+        - Current duration: 47.895s
+        - ETA: 0.09970301719771868s
+Layer-43 done.
+        - Progress: 99.83%
+        - Current duration: 48.043s
+        - ETA: 0.08070757605590018s
+Done. Exporting solution...
+root@slb-7:/subsetlatticebuilder#
