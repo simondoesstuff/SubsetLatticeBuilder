@@ -6,6 +6,8 @@ Operating on AWS EC2: `c6i.8xlarge` (3rd generation Intel Xeon Scalable processo
 Finishes in 12.914 seconds on the `c6i.8xlarge` VM.  
 On my personal laptop (`i7 8750H` CPU), it finishes in about ~58 seconds.
 
+See the [exported solution](soln/79867.soln).
+
 ```sh
 root@19bb3cef6106:/subsetlatticebuilder# target/release/subset-lattice-builder "data/79867.txt" "soln/79867.soln"
 Layer-1 done.
