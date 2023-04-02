@@ -62,7 +62,7 @@ Everything's in Rust. It's using two-
 ### **Traversal**
 
 The algorithm performs many insert operations, one per node.  
-**Insert ( graph, new_node )**  
+**Insert ( graph, new\_node )**  
 1. Traverse the graph either from top-down or bottom-up. The search is agnostic to the type of traversal. But, let's assume a top-down DFS.
 2. Only continue to search along edges that satisfy $parent \subset new\_node \subset child$.
 3. Search until we find a parent that satisfies $parent \subset new\_node$ and there is no child of the parent such that $new\_node \subset child$. Append the edge $parent \to new\_node$.
