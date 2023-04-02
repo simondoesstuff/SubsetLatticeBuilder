@@ -1,4 +1,4 @@
-# Time & Space Complexity
+# Space & Time Complexity
 
 I believe I have achieved the lowerbound runtime and space complexity.
 
