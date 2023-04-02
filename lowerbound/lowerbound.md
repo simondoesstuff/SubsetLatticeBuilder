@@ -43,7 +43,7 @@ In other words, the fastest algorithm that produces every correct edge will run 
 
 ## Lowerbound space
 
-It may be possible to achieve a space complexity lower than mine ($O(n^2)$). I am not definitive on this lowerbound. It may be possible to exceed my algorithm if it could keep all nodes in a file and produce the solution without ever having the entire solution or input nodes in memory at once.
+It may be possible to achieve a space complexity lower than mine. I am not definitive on this lowerbound. It may be possible to exceed my algorithm if it could keep all nodes in a file and produce the solution without ever having the entire solution or input nodes in memory at once.
 
 However, it is necesarily the case that any function that takes in all nodes as a parameter must execute with $O(n^2)$ space because the node labels are $n^2$ in nature.
 
