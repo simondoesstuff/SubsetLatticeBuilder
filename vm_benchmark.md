@@ -7,7 +7,7 @@ Finishes in 12.914 seconds on the `c6i.8xlarge` VM.
 On my personal laptop (`i7 8750H` CPU), it finishes in about ~58 seconds.
 
 ```sh
-root@19bb3cef6106:/subsetlatticebuilder# target/release/subset-lattice-builder "data/79867.txt" "data/79867.soln"
+root@19bb3cef6106:/subsetlatticebuilder# target/release/subset-lattice-builder "data/79867.txt" "soln/79867.soln"
 Layer-1 done.
         - Progress: 0.00%
         - Current duration: 0.002s
