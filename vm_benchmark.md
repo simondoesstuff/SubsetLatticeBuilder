@@ -1,3 +1,12 @@
+### VM Benchmark
+Computing the [79,867 node](data/79867.txt) dataset.  
+Operating on AWS EC2: `c6i.8xlarge` (3rd generation Intel Xeon Scalable processors).
+
+#### Results
+Finishes in 12.914 seconds on the `c6i.8xlarge` VM.  
+On my personal laptop (`i7 8750H` CPU), it finishes in about ~58 seconds.
+
+```sh
 root@19bb3cef6106:/subsetlatticebuilder# target/release/subset-lattice-builder "data/79867.txt" "data/79867.soln"
 Layer-1 done.
         - Progress: 0.00%
@@ -173,3 +182,4 @@ Layer-43 done.
         - ETA: 0.0003233896564758254s
 Done. Exporting solution...
 root@19bb3cef6106:/subsetlatticebuilder# 
+```
