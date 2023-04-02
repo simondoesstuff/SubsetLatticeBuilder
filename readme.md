@@ -62,16 +62,16 @@ Everything's in Rust. It's using two-
 ### **Traversal**
 
 The algorithm performs many insert operations, one per node.  
-**Insert ( graph, new\_node )**  
+**Insert ( graph, newNode )**  
 1. Traverse the graph either from top-down or bottom-up. The search is agnostic to the type of traversal. But, let's assume a top-down DFS.
-2. Only continue to search along edges that satisfy $parent \subset new\_node \subset child$.
-3. Search until we find a parent that satisfies $parent \subset new\_node$ and there is no child of the parent such that $new\_node \subset child$. Append the edge $parent \to new\_node$.
+2. Only continue to search along edges that satisfy $parent \subset newNode \subset child$.
+3. Search until we find a parent that satisfies $parent \subset newNode$ and there is no child of the parent such that $newNode \subset child$. Append the edge $parent \to newNode$.
 
 **DFS vs BFS**  
 In my experimentation, the DFS is *much, much* more performant for my data. I suspect this is because the DFS more efficiently finds the goal edges which are generally deep within a wide graph whereas BFS wastes time meandering at the surface.
 
 ### **Parallelization**
-Think of the top-down traversal (as I use in my implementation) as the process of finding a suitable parent for the $new\_node$. Therefore, if the suitable parent does not exist in the graph during the traversal, the algorithm will draw unnecessary (and wrong) edges.
+Think of the top-down traversal (as I use in my implementation) as the process of finding a suitable parent for the $newNode$. Therefore, if the suitable parent does not exist in the graph during the traversal, the algorithm will draw unnecessary (and wrong) edges.
 
 So, any given node *depends* on nodes with less labels in a top-down search, but *NOT* on nodes with a greater than or equal amount of labels. This allows me to parallelize by-
 
