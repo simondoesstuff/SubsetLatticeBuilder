@@ -8,5 +8,3 @@ COPY Cargo.toml .
 COPY Cargo.lock .
 
 RUN RUSTFLAGS="-C target-cpu=native" cargo build --release
-
-RUN ln -s target/release/subsetlatticebuilder slb
