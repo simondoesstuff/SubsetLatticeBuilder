@@ -91,7 +91,7 @@ Notice that all labels and edges are binary attributes. I organize nodes by inde
 
 ## Time & Space Complexity
 
-I believe I have achieved the lowerbound runtime and space complexity. See my explanation, [here](lowerbound/lowerbound.md).
+I believe I have achieved the lowerbound runtime. See my explanation, [here](lowerbound/lowerbound.md).
 
 **Time**: $O(n^2)$  
 **Space**: $O(n^2)$  
