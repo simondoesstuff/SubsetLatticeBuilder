@@ -43,16 +43,6 @@ In other words, the fastest algorithm that produces every correct edge will run 
 
 ## Lowerbound space
 
-It may be possible to achieve a space complexity lower than mine. I am not definitive on this lowerbound. It may be possible to exceed my algorithm if it could keep all nodes in a file and produce the solution without ever having the entire solution or input nodes in memory at once.
+It may be possible to achieve a space complexity lower than mine. I am not definitive on a space lowerbound. It may be possible to exceed my algorithm if it could keep all nodes in a file and produce the solution without ever having the entire solution or input nodes in memory at once.
 
-However, it is necesarily the case that any function that takes in all nodes as a parameter must execute with $O(n^2)$ space because the node labels are $n^2$ in nature.
-
-Consider a graph where all nodes lie in a linear lineage:
-
-<img src="./linear.png" width="40%"/>
-
-At the worst case, the labels of the node include the labels of their ancestors which brings the overall space complexity to store $n$ nodes $O(n^2)$.
-
-Overall, we have a problem that takes $O(n^2)$ information as an input and produces $O(n^2)$ information as an output. Reducing space complexity from $O(n^2)$ would require computing the solution without keeping the nodes or the edges in memory.
-
-I consider such an algorithm very unlikely to exist. Especially because every solution exists as a subset lattice with "missing nodes". A solution with 720 symbols could have at worst $2^{720}$ nodes, but the runtime can remain at $n^2$ because it isn't necessary to scan the entire possible solution space, only the nodes given. I personally believe this implies that reducing space complexity further would require a very large cost in runtime.
+However, it is necesarily the case that any function that takes produces the entire solution in memory would have an $O(n^2)$ space complexity because the solution is $O(n^2)$ in nature.
