@@ -1,5 +1,7 @@
 mod traversal;
 mod fixed_dag;
+mod chunk_nodes;
+mod id_generator;
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -26,21 +28,6 @@ fn parse_input(path: &str) -> Vec<BitSet> {
 
         return bs;
     }).collect::<Vec<BitSet>>();
-}
-
-
-fn nodes_by_size(node_contents: &[BitSet]) -> HashMap<usize, Vec<usize>> {
-    let mut by_size = HashMap::new();
-
-    for (i, node) in node_contents.iter().enumerate() {
-        let size = node.len();
-        by_size
-            .entry(size)
-            .or_insert(vec![])
-            .push(i);
-    }
-
-    by_size
 }
 
 
