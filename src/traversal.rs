@@ -8,6 +8,10 @@ fn is_proper_subset(a: &BitSet, b: &BitSet) -> bool {
 }
 
 
+/// Finds parents of a new node in a graph using a depth-first search.
+/// It assumes that the the ideal parent node is within the search.
+/// That is, it relies on the entirety of the data that's made of smaller
+/// nodes than the new node.
 pub fn find_parents_dfs(graph: &FixedDAG, new_node: &usize) -> BitSet {
     let mut new_edges = BitSet::new();
     let mut stack: VecDeque<usize> = VecDeque::from([graph.nodes.len() - 1]);

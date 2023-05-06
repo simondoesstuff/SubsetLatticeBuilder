@@ -1,13 +1,14 @@
 mod traversal;
 mod fixed_dag;
-mod chunk_nodes;
-mod id_generator;
+mod super_nodes;
+mod by_size;
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, LineWriter, Write};
 use bit_set::BitSet;
 use rayon::prelude::*;
+use crate::by_size::nodes_by_size;
 use crate::fixed_dag::FixedDAG;
 use crate::traversal::find_parents_dfs;
 
@@ -50,7 +51,7 @@ fn export_graph(path: &str, graph: &FixedDAG) {
 }
 
 
-fn solve(in_path: &str, out_path: &str) {
+fn trickle_alg(in_path: &str, out_path: &str) {
     // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
     node_contents.push(BitSet::new()); // null node keeps track of roots
@@ -128,5 +129,5 @@ fn main() {
         std::process::exit(1);
     };
 
-    solve(in_path, out_path);
+    trickle_alg(in_path, out_path);
 }
