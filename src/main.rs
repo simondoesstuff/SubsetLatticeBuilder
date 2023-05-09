@@ -51,6 +51,17 @@ fn export_graph(path: &str, graph: &FixedDAG) {
 }
 
 
+fn super_nodes_alg(in_path: &str, out_path: &str) {
+    let mut node_conents = parse_input(in_path);
+    let t1 = std::time::Instant::now();
+    
+    println!("Finding super nodes...");
+    super_nodes::divide_chunks(&node_conents);
+    
+    println!("Duration: {:?}", std::time::Instant::now() - t1);
+}
+
+
 fn trickle_alg(in_path: &str, out_path: &str) {
     // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
@@ -118,6 +129,12 @@ fn trickle_alg(in_path: &str, out_path: &str) {
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
+    // todo remove
+    // let args = vec![
+    //     "".to_string(),
+    //     "data/6.txt".to_string(),
+    //     "soln/6/soln".to_string(),
+    // ];
 
     let in_path = if let Some(path) = args.get(1) { path } else {
         eprintln!("No input file specified");
