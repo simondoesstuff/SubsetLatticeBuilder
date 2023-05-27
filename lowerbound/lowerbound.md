@@ -45,4 +45,4 @@ In other words, the fastest algorithm that produces every correct edge will run 
 
 It may be possible to achieve a space complexity lower than mine. I am not definitive on a space lowerbound. It may be possible to exceed my algorithm if it could keep all nodes in a file and produce the solution without ever having the entire solution or input nodes in memory at once.
 
-However, it is necesarily the case that any function that takes produces the entire solution in memory would have an $O(n^2)$ space complexity because the solution is $O(n^2)$ in nature.
+However, it is necesarily the case that any function that produces the entire solution in memory would have an $O(n^2)$ space complexity because the solution is $O(n^2)$ in nature.
