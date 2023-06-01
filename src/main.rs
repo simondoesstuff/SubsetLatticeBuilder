@@ -128,13 +128,13 @@ fn trickle_alg(in_path: &str, out_path: &str) {
 
 
 fn main() {
-    // let args = std::env::args().collect::<Vec<String>>();
+    let args = std::env::args().collect::<Vec<String>>();
     // todo remove
-    let args = vec![
-        "".to_string(),
-        "data/6.txt".to_string(),
-        "soln/6/soln".to_string(),
-    ];
+    // let args = vec![
+    //     "".to_string(),
+    //     "data/6.txt".to_string(),
+    //     "soln/6/soln".to_string(),
+    // ];
 
     let in_path = if let Some(path) = args.get(1) { path } else {
         eprintln!("No input file specified");
@@ -146,5 +146,6 @@ fn main() {
         std::process::exit(1);
     };
 
-    super_nodes_alg(in_path, out_path);
+    // super_nodes_alg(in_path, out_path);
+    trickle_alg(in_path, out_path);
 }
