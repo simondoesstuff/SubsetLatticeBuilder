@@ -14,6 +14,10 @@ use crate::traversal::find_parents_dfs;
 
 
 fn parse_input(path: &str) -> Vec<BitSet> {
+    // todo this needs to clean the data -- currently not distinct or sorted
+    
+
+
     let file = File::open(path).expect("file not found");
     let reader = BufReader::new(file);
 
