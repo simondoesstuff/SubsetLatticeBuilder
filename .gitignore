@@ -1,6 +1,5 @@
-/target
+trickle_constr/target
 .idea/
-subsetlatticebuilder-0f8c0db9b48b.json
 
 pythonAnalysis/venv
 pythonAnalysis/src/__pycache__
