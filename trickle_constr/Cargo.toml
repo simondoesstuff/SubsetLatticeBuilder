@@ -1,0 +1,12 @@
+[package]
+name = "trickle-constr"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[dependencies]
+bit-set = "0.5.3"
+rayon = "1.7.0"
