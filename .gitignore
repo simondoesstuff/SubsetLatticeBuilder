@@ -1,5 +1,5 @@
 */target
 .idea/
 
-pythonAnalysis/venv
-pythonAnalysis/src/__pycache__
+*/venv
+*/__pycache__

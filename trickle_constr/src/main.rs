@@ -100,7 +100,7 @@ fn trickle_alg(in_path: &str, out_path: &str) {
         let layer = &layers[layer_key];
 
         let new_edges: Vec<(&usize, BitSet)> = layer
-            .par_iter()
+            .iter()
             .map(|new_node| {
                 (new_node, find_parents_dfs(&graph, new_node))
             })

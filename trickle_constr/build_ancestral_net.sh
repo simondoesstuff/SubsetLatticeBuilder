@@ -25,4 +25,4 @@ echo "Building rust program"
 RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 echo "Running rust program"
-target/release/trickle-constr $input $output
+target/release/trickle_constr $input $output
