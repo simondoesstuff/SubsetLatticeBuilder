@@ -1,34 +1,40 @@
+use cudarc::{
+    driver::{CudaDevice, DriverError, LaunchAsync, LaunchConfig},
+    nvrtc::Ptx,
+};
+
 fn main() {
-    // see available devices
-    for dev in cudarc::driver::CudaDevice::all() {
-        println!("Device: {}", dev.name()?);
-    }
-    
-    // get the first device
-    let dev = cudarc::driver::CudaDevice::new(0)?;
+    let dev = CudaDevice::new(0).unwrap();
+	println!("{:?}", dev);
+	
+	let ptx = cudarc::nvrtc::compile_ptx("
+		extern \"C\" __global__ void sin_kernel(float *out, const float *inp, const int numel) {
+			unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+			if (i < numel) {
+				out[i] = sin(inp[i]);
+			}
+		}").unwrap();	
+	println!("PTX compiled");
+	
+    dev.load_ptx(ptx, "module", &["sin_kernel"]).unwrap();
+	println!("PTX loaded");
 
-    // allocate buffers
-    let inp = dev.htod_copy(vec![1.0f32; 100])?;
-    let mut out = dev.alloc_zeros::<f32>(100)?;
+    // and then retrieve the function with `get_func`
+    let f = dev.get_func("module", "sin_kernel").unwrap();
 
-    // load kernel
-    let ptx = cudarc::nvrtc::compile_ptx("
-    extern \"C\" __global__ void sin_kernel(float *out, const float *inp, const size_t numel) {
-        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i < numel) {
-            out[i] = sin(inp[i]);
-        }
-    }")?;
+    let a_host = [1.0, 2.0, 3.0];
 
-    // and dynamically load it into the device
-    dev.load_ptx(ptx, "my_module", &["sin_kernel"])?;
-    
-    // launch the kernel
-    let sin_kernel = dev.get_func("my_module", "sin_kernel").unwrap();
-    let cfg = LaunchConfig::for_num_elems(100);
-    unsafe { sin_kernel.launch(cfg, (&mut out, &inp, 100usize)) }?;
-    
-    // copy back the result
-    let out_host: Vec<f32> = dev.dtoh_sync_copy(&out)?;
-    assert_eq!(out_host, [1.0; 100].map(f32::sin));
+    let a_dev = dev.htod_copy(a_host.into()).unwrap();
+    let mut b_dev = a_dev.clone();
+
+    let n = 3;
+    let cfg = LaunchConfig::for_num_elems(n);
+    unsafe { f.launch(cfg, (&mut b_dev, &a_dev, n as i32)) }.unwrap();
+
+    let a_host_2 = dev.sync_reclaim(a_dev).unwrap();
+    let b_host = dev.sync_reclaim(b_dev).unwrap();
+
+    println!("Found {:?}", b_host);
+    println!("Expected {:?}", a_host.map(f32::sin));
+    assert_eq!(&a_host, a_host_2.as_slice());
 }
