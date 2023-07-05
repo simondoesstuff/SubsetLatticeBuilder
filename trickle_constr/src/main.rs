@@ -15,9 +15,6 @@ use crate::traversal::find_parents_dfs;
 
 fn parse_input(path: &str) -> Vec<BitSet> {
     // todo this needs to clean the data -- currently not distinct or sorted
-    
-
-
     let file = File::open(path).expect("file not found");
     let reader = BufReader::new(file);
 
@@ -100,7 +97,7 @@ fn trickle_alg(in_path: &str, out_path: &str) {
         let layer = &layers[layer_key];
 
         let new_edges: Vec<(&usize, BitSet)> = layer
-            .iter()
+            .par_iter()
             .map(|new_node| {
                 (new_node, find_parents_dfs(&graph, new_node))
             })

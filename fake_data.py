@@ -1,4 +1,5 @@
 import random
+import sys
 from time import sleep
 
 
@@ -21,8 +22,12 @@ def node_to_set(node):
     return node_set
 
 
+if len(sys.argv) < 2:
+    print("Need 2 args:   symbol_quantity output_path")
+    sys.exit(-1)
+
 quantity_range = int(15.4 * 10**6)
-symbol_range = 3000
+symbol_range = int(sys.argv[1])
 
 print("Generating nodes...")
 print("Quantity range: " + str(quantity_range))
@@ -52,13 +57,16 @@ sleep(10)
 
 nodes = list(nodes)
 
-file_name = "fake_data.txt"
+file_name = str(sys.argv[2])
 with open(file_name, "w") as file:
     for batch in range(0, len(nodes), 1000):
         for i in range(batch, batch + 1000):
-            file.write(str(nodes[i]) + "\n")
-            
-        print(f"Nodes written: {batch}")
+            node = node_to_set(nodes[i])
+            # format as a list of numbers separated by spaces
+            formatted = " ".join([str(n) for n in node])
+            file.write(formatted + "\n")
+
+        print(f"Nodes written: {i + 1}")
 
 file.close()
 
