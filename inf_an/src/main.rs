@@ -49,7 +49,7 @@ use std::io::BufRead;
 
 
 /// Returns the nodes as a bit buffer, the number of nodes, and the length of each node in the buffer
-fn load_data(filename: &str) -> (Vec<bool>, usize, u32) {
+fn load_data(filename: &str) -> (Vec<bool>, u32, u32) {
     // File format:    integers separated by spaces, nodes separated by newlines
     
     let file = std::fs::File::open(filename).expect("Failed to open file");
@@ -76,7 +76,7 @@ fn load_data(filename: &str) -> (Vec<bool>, usize, u32) {
     
     // bit buffer for all nodes 
     let mut node_buffer = Vec::new();
-    let node_amnt = nodes.len();
+    let node_amnt = nodes.len() as u32;
     
     for node in nodes {
         let as_bit_vec = node.into_bit_vec();
@@ -94,10 +94,12 @@ fn load_data(filename: &str) -> (Vec<bool>, usize, u32) {
 
 
 fn main() {
-    let input_file = "../data/example/6.txt";
+    let input_file = "../data/dirty/3515.txt";
     
     
     // intialize CUDA driver
+
+    println!("Initializing CUDA...");
     
     cuda_driver_init().expect("Failed to initialize CUDA driver");
     let dev_count = device_count().expect("Failed to get device count") as usize;
@@ -137,6 +139,8 @@ fn main() {
 
     // create pairs of nodes to intersect
     
+    println!("Creating and dicing tasks...");
+    
     let mut pairs = Vec::new();
     
     for i in 0..node_amnt {
@@ -168,15 +172,15 @@ fn main() {
         // pairs is two separate buffers on the device
         let (op1, op2): (Vec<u32>, Vec<u32>) = pairs_chunked[i].iter().cloned().unzip();
 
-        let n = op1.len() as u32;
-        let cfg = LaunchConfig::for_num_elems(n);
+        let n = op1.len();
+        let cfg = LaunchConfig::for_num_elems(n as u32);
         
         let dev_op1 = dev.htod_copy(op1).expect("Failed to copy op1 to device");
         let dev_op2 = dev.htod_copy(op2).expect("Failed to copy op2 to device");
         let dev_nodes = dev.htod_copy(node_buffer.clone()).expect("Failed to copy nodes to device");
 
         // todo out buffer should be a bit buffer
-        let dev_out = dev.alloc_zeros::<bool>((n * node_len) as usize).expect("Failed to allocate output buffer");
+        let dev_out = dev.alloc_zeros::<bool>(n * node_len as usize).expect("Failed to allocate output buffer");
         dev_out_buffers.push(dev_out);
         
         // get kernel
@@ -206,6 +210,8 @@ fn main() {
     }
     
     // aggregate results
+
+    println!("\nAggregating results...");
     
     let mut results_aggregated = Vec::new();
     
@@ -229,7 +235,7 @@ fn main() {
     
     // print results
     
-    println!("\nResults:");
+    println!("Results:");
     
     let total_results = results_aggregated.iter().fold(0, |acc, x| acc + x.len());
     
