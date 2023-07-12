@@ -1,36 +1,30 @@
-// Example
-// extern C __global__ void sin_kernel(float *out, const float *inp, const int numel) {
-//     unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (i < numel) {
-//         out[i] = sin(inp[i]);
-//     }
-// }
-
-
-
 extern "C" {
     
-    typedef unsigned int uint;
+    typedef unsigned long long u64;
 
     __global__ void intersect_kernel(
-            bool* out,
-            const bool* nodes,
-            const uint* op1,
-            const uint* op2,
-            const uint node_len,
-            const uint amnt)
+            u64* out,
+            const u64* nodes,
+            const u64* op1,
+            const u64* op2,
+            const u64 node_len,
+            const u64 amnt)
     {
-        uint id = blockIdx.x * blockDim.x + threadIdx.x;
-        
-        if (id < amnt) {
-            uint op1_index = op1[id] * node_len;
-            uint op2_index = op2[id] * node_len;
-            uint out_index = id * node_len;
+        u64 id = blockIdx.x * blockDim.x + threadIdx.x;
 
-            for (uint i = 0; i < node_len; i++) {
-                out[out_index + i] = nodes[op1_index + i] && nodes[op2_index + i];
+        if (id < amnt) {
+            u64 op1_index = op1[id] * node_len;
+            u64 op2_index = op2[id] * node_len;
+            u64 out_index = id * node_len;
+            
+            for (u64 i = 0; i < node_len; i++) {
+                out[out_index + i] = nodes[op1_index + i] & nodes[op2_index + i];
             }
         }
     }
+    
+    // __global__ void intersect_kernel(int a, int b) {
+    //     int c = a + b;
+    // }
 
 }

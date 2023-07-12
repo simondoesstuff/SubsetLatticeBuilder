@@ -1,5 +1,5 @@
-use cudarc::driver::result::device::{get_count as device_count};
-use cudarc::driver::{CudaDevice, LaunchConfig, LaunchAsync, CudaSlice};
+use cudarc::driver::result::{device as res_device};
+use cudarc::driver::{CudaDevice, LaunchConfig, LaunchAsync};
 use cudarc::driver::result::{init as cuda_driver_init};
 
 use bit_set::BitSet;
@@ -9,7 +9,7 @@ use std::thread;
 
 
 /// Returns the nodes as a bit buffer, the number of nodes, and the length of each node in the buffer
-fn load_data(filename: &str) -> (Vec<bool>, u32, u32) {
+fn load_data(filename: &str) -> (Vec<u64>, u64, u64) {
     // File format:    integers separated by spaces, nodes separated by newlines
     
     let file = std::fs::File::open(filename).expect("Failed to open file");
@@ -20,7 +20,7 @@ fn load_data(filename: &str) -> (Vec<bool>, u32, u32) {
     
     for line in reader.lines() {
         let line = line.expect("Failed to read line");
-        let features = line.split(" ").map(|s| s.parse::<u32>().expect("Failed to parse int")).collect::<Vec<_>>();
+        let features = line.split(" ").map(|s| s.parse::<u64>().expect("Failed to parse int")).collect::<Vec<_>>();
         let mut set = BitSet::new();
         
         for feature in features {
@@ -33,50 +33,55 @@ fn load_data(filename: &str) -> (Vec<bool>, u32, u32) {
         
         nodes.push(set);
     }
+    
+    // max feature needs to be a multiple of 64
+    max_feature = (max_feature + 63) & !63;
    
-    // todo crunch bits in 64 bit chunks 
-    // bit buffer for all nodes 
     let mut node_buffer = Vec::new();
-    let node_amnt = nodes.len() as u32;
+    let node_amnt = nodes.len() as u64;
     
     for node in nodes {
         let as_bit_vec = node.into_bit_vec();
-        let remainder = max_feature as usize - (as_bit_vec.len() - 1);
+        let mut next_chunk: u64 = 0;
+        let mut remaining = 64;
         
+        // skip 1 because features are 1-indexed
         for bit in as_bit_vec.iter().skip(1) {
-            node_buffer.push(bit);
+            if remaining == 0 {
+                node_buffer.push(next_chunk);
+                next_chunk = 0;
+                remaining = 64;
+            }
+            
+            if bit {
+                next_chunk |= 1 << (remaining - 1);
+            }
+            
+            remaining -= 1;
         }
 
-        node_buffer.extend(&vec![false; remainder]); // fill remaining space with 0s
+        node_buffer.push(next_chunk);
     }
     
-    return (node_buffer, node_amnt, max_feature);
+    let node_len: u64 = max_feature / 64;
+    return (node_buffer, node_amnt, node_len);
 }
 
 
-fn task_gen_thread(mem_max: usize, node_len: usize, node_amnt: usize) -> mpsc::Receiver<Vec<(u32, u32)>> {
-    let (tx, rx) = mpsc::channel::<Vec<(u32, u32)>>();
+fn task_gen_thread(tasks_per_device: u64, node_amnt: u64) -> (thread::JoinHandle<()>, mpsc::Receiver<Vec<(u64, u64)>>) {
+    let (tx, rx) = mpsc::channel::<Vec<(u64, u64)>>();
 
-    thread::spawn(move || {
-        let max_tasks_per_device = {
-            // max - node_buffer = remaining
-            // (2 * u32) // op1, op2
-            // node_len // output buffer
-            // remaining / (op12 + out) = amnt of tasks
-            (mem_max - node_amnt * node_len)
-            / (2 * 32 + node_len)
-        };
-        
+    let handle = thread::spawn(move || {
         let mut generator = (0..node_amnt)
                         .flat_map(|i| (i+1..node_amnt)
-                        .map(move |j| (i as u32, j as u32)));
+                        .map(move |j| (i as u64, j as u64)));
         
         'outer: loop {
-            let mut next_chunk = Vec::new();
+            let mut next_chunk = Vec::with_capacity(tasks_per_device as usize);
             
-            while next_chunk.len() < max_tasks_per_device {
-                if let Some(next_pair) = generator.next() {
-                    next_chunk.push(next_pair);
+            for _ in 0..tasks_per_device {
+                if let Some(item) = generator.next() {
+                    next_chunk.push(item);
                 } else {
                     tx.send(next_chunk).unwrap();
                     break 'outer;
@@ -87,264 +92,240 @@ fn task_gen_thread(mem_max: usize, node_len: usize, node_amnt: usize) -> mpsc::R
         }
     });
 
-    return rx;
+    return (handle, rx);
 }
 
 
-fn result_consumer_thread(node_len: u32) -> mpsc::Sender<Vec<bool>> {
-    let (tx, rx) = mpsc::channel::<Vec<bool>>();
+fn result_consumer_thread(node_len: u64) -> (thread::JoinHandle<()>, mpsc::Sender<Vec<u64>>) {
+    let (tx, rx) = mpsc::channel::<Vec<u64>>();
 
-    thread::spawn(move || {
-        let mut total = 0;
+    // we are currently venting results as they come in
+    let handle = thread::spawn(move || {
+        let mut total: usize = 0;
+        
+        fn result_to_nodes(result: Vec<u64>, node_len: u64) -> Vec<BitSet> {
+            let mut new_results = Vec::new();
 
-        for result in rx {
-            // we are currently venting results as they come in
-            // let mut results = Vec::new();
-            let mut results = 0;
-
-            for chunk in result.chunks(node_len as usize) {
-                // let mut node = BitSet::new();
+            // each block consists of u64s of bits that correspond to features
+            for block in result.chunks(node_len as usize) {
+                let mut node = BitSet::with_capacity(node_len as usize * 64);
                 
-                // for (i, bit) in chunk.iter().enumerate() {
-                //     if *bit {
-                //         node.insert(i + 1);
-                //     }
-                // }
+                for (chunk_index, bit_chunk) in block.iter().enumerate() {
+                    // features are 1-indexed from the left.
+                    //   eg:   0110000... is {2, 3}.
+                    for bit_index in 0..64 {
+                        if bit_chunk & (1 << (63 - bit_index)) != 0 {
+                            node.insert(chunk_index * 64 + bit_index + 1);
+                        }
+                    }
+                }
                 
-                // results.push(node);
-                results += 1;
+                new_results.push(node);
             }
             
-            total += results;
-            print!("New Results. {} new of {} total.", results, total);
-            print!("    ");
-            
-            // for result in results {
-            //     print!(" {:?}", result);
-            // }
-            
-            println!();
+            new_results
         }
+        
+        // for result in &rx {
+        //     let nodes = result_to_nodes(result, node_len).into_iter().filter(|node| node.len() > 0).collect::<Vec<_>>();
+        //     println!("Got results {:?}", nodes);
+        //     total += nodes.len();
+        // }
+        
+        // todo analyzing results almost certainly needs to be a thread pool
+        total += rx.iter().map(|result| result.chunks(node_len as usize).len()).sum::<usize>();
+        println!("Finished consuming results. {} total.", total);
     });
 
-    return tx;
+    return (handle, tx);
 }
 
 
-fn launch_device(dev: &Arc<CudaDevice>, task: Vec<(u32, u32)>, node_buffer: Vec<bool>, node_len: u32) -> CudaSlice<bool> {
-    let (op1, op2): (Vec<u32>, Vec<u32>) = task.iter().cloned().unzip();
+fn device_thread(dev: Arc<CudaDevice>, node_buffer: Vec<u64>, node_len: u64, max_task_len: u64, result_tx: mpsc::Sender<Vec<u64>>) -> (thread::JoinHandle<()>, mpsc::Sender<Vec<(u64, u64)>>) {
+    let (tx, rx) = mpsc::channel::<Vec<(u64, u64)>>();
+    
+    let handle = thread::spawn(move || {
+        // always bind to thread before using device
+        dev.bind_to_thread().unwrap();
+        
+        // allocate buffers
+        
+        let mut dev_out = unsafe { dev.alloc::<u64>((max_task_len * node_len) as usize).expect("Failed to allocate output buffer") };
+        let dev_nodes = dev.htod_copy(node_buffer).expect("Failed to copy nodes to device");
+        let mut dev_op1 = unsafe { dev.alloc::<u64>(max_task_len as usize).expect("Failed to allocate op1 buffer") };
+        let mut dev_op2 = unsafe { dev.alloc::<u64>(max_task_len as usize).expect("Failed to allocate op2 buffer") };
+        // additionally:   node_len,  task_len
 
-    let n = op1.len();
-    let cfg = LaunchConfig::for_num_elems(n as u32);
-    
-    let dev_op1 = dev.htod_copy(op1).expect("Failed to copy op1 to device");
-    let dev_op2 = dev.htod_copy(op2).expect("Failed to copy op2 to device");
-    let dev_nodes = dev.htod_copy(node_buffer.clone()).expect("Failed to copy nodes to device");
+        // start marathon
+        
+        for task in rx {
+            let task_len = task.len();
 
-    let mut dev_out = dev.alloc_zeros::<bool>(n * node_len as usize).expect("Failed to allocate output buffer");
+            // before copying, we need the new task length to match the buffer size
+            let task = task.into_iter().chain(std::iter::repeat((0, 0)).take(max_task_len as usize - task_len)).collect::<Vec<_>>();
+
+            let (host_op1, host_op2): (Vec<u64>, Vec<u64>) = task.iter().cloned().unzip();
+            dev.htod_sync_copy_into(&host_op1, &mut dev_op1).expect("Failed to copy op1 to device");
+            dev.htod_sync_copy_into(&host_op2, &mut dev_op2).expect("Failed to copy op2 to device");
+            
+            let cfg = LaunchConfig::for_num_elems(task_len as u32);
+            let kernel = dev.get_func("module", "intersect_kernel").unwrap();
+            
+            unsafe {
+                kernel
+                    .launch(cfg, (
+                        &mut dev_out,
+                        &dev_nodes,
+                        &dev_op1,
+                        &dev_op2,
+                        node_len,
+                        task_len
+                    ))
+                    .expect("Failed to launch kernel");
+            }
+            
+            println!("  --->   Launched device {}", dev.ordinal());
+            
+            let host_out = dev.dtoh_sync_copy(&dev_out).expect("Failed to copy output to host");
+            // truncate to task length to avoid sending bad data
+            let host_out = host_out.into_iter().take(task_len as usize * node_len as usize).collect::<Vec<_>>();
+            result_tx.send(host_out).unwrap();
+            
+            println!("  <---   Reclaimed device {}", dev.ordinal());
+        }
+        
+        drop(result_tx);
+    });
     
-    // get kernel
-    let kernel = dev.get_func("module", "intersect_kernel").expect("Failed to get kernel");
-    
-    unsafe {
-        kernel
-            .launch(cfg, (&mut dev_out, &dev_nodes ,&dev_op1, &dev_op2, node_len as u32, n))
-            .expect("Failed to launch kernel");
-    }
-    
-    return dev_out;
+    return (handle, tx);
 }
 
 
 fn main() {
     let input_file = "../data/dirty/79867.txt";
-    let mem_max = ( (2) * 8*10_usize.pow(9) ) as usize;
-    
+
+    let mem_max_in_gb = 80;
+    let mem_max = mem_max_in_gb * 8*10_u64.pow(9);
     
     // intialize CUDA driver
 
     println!("Initializing CUDA...");
     
     cuda_driver_init().expect("Failed to initialize CUDA driver");
-    let dev_count = device_count().expect("Failed to get device count") as usize;
+    let dev_count = res_device::get_count().expect("Failed to get device count") as usize;
     println!("Initialized CUDA. Detected {} devices.", dev_count);
     
     // get all devices
+    
+    let ptx = cudarc::nvrtc::compile_ptx(
+        std::fs::read_to_string("src/intersect.cu").expect("Failed to read cu file")
+    ).expect("Failed to compile PTX");
+    
+
+    println!("PTX compiled.");
+    println!("Analyzing devices...");
     
     let devices = {
         let mut devices = Vec::with_capacity(dev_count);
         
         for i in 0..dev_count {
-            let new_device = CudaDevice::new(i as usize).unwrap_or_else(|e| {
+            unsafe {
+                let cu_device = res_device::get(i as i32).expect("Failed to get device");
+                let mem = res_device::total_mem(cu_device).expect("Failed to get device memory");
+                println!("   - CUDA Dev {}: {} GB", i, mem as f64 / 10_usize.pow(9) as f64);
+            }
+
+            // using safe api
+            let new_device = CudaDevice::new(i).unwrap_or_else(|e| {
                 panic!("Failed to get device {}: {}", i, e);
             });
 
-            // todo check if device has enough memory
+            new_device.load_ptx(ptx.clone(), "module", &["intersect_kernel"]).expect("Failed to load PTX");
             devices.push(new_device);
         }
         
         devices
     };
     
-    println!("Locked on all devices.");
-    
-    // compile and load PTX from file
-    
-    let ptx = cudarc::nvrtc::compile_ptx(
-        std::fs::read_to_string("src/intersect.cu").expect("Failed to read cu file")
-    ).expect("Failed to compile PTX");
-    
-    for dev in &devices {
-        dev.load_ptx(ptx.clone(), "module", &["intersect_kernel"]).expect("Failed to load PTX");
-    }
+    println!("Loaded kernels into all devices.");
 
-    println!("Kernels loaded.");
-    
     // load data
     
     println!("Loading data...");
     let (node_buffer, node_amnt, node_len) = load_data(input_file);
-    println!("Loaded {} nodes with (max) lengths {}.", node_amnt, node_len);
+    println!("Loaded {} nodes with (max, rounded up by 64) lengths {} bits.", node_amnt, node_len * 64);
 
-    // start the marathon
+    // calculate tasks based on ideal memory usage
     
-    println!("Creating and dicing tasks in the background.");
-    // Thread:    Generates tasks
-    let task_rx = task_gen_thread(mem_max, node_len as usize, node_amnt as usize);
-    // Thread:    Handles results
-    let result_tx = result_consumer_thread(node_len);
+    let max_tasks_per_device: u64 = {
+        // node_amnt * node_len * 64 = node_buffer
+        // max - node_buffer = remaining
+        // (2 * u32) // op1, op2
+        // node_len * 64 // output buffer
+        // remaining / (op12 + out) = amnt of tasks
+        (mem_max - node_amnt * node_len * 64)
+        / (2 * 64 + node_len * 64)
+    };
     
-    // initialize buffers and launch kernels
-    
-    println!("Launching kernels...\n");
-    
-    // repeatedly send and receive GPU workers
-    let mut has_tasks = true;
-    while has_tasks {
-        let mut out_buffers = Vec::new();
+    println!("Aiming for {} GB of memory usage (per device) by providing {} tasks per batch.", mem_max_in_gb, max_tasks_per_device);
 
-        for dev in &devices {
-            let task = match task_rx.recv() {
-                Ok(task) => task,
-                Err(_) => {
-                    has_tasks = false;
-                    break;
-                },
-            };
+    // launch background threads
+    
+    let (task_thread, task_rx) = task_gen_thread(max_tasks_per_device, node_amnt);
+    println!("Task generator thread ready.");
+    let (result_thread, result_tx) = result_consumer_thread(node_len);
+    println!("Task consumer thread ready.");
+    
+    // GPU worker threads
+    let (device_threads, device_txs) = {
+        let mut device_threads = Vec::with_capacity(dev_count);
+        let mut device_txs = Vec::with_capacity(dev_count);
+        
+        for dev in devices {
+            // unzip
+            let (thread, tx) = device_thread(
+                dev, // moving dev into thread
+                node_buffer.clone(),
+                node_len.clone(),
+                max_tasks_per_device.clone(),
+                result_tx.clone()
+            );
             
-            let out_buffer = launch_device(dev, task, node_buffer.clone(), node_len);
-            out_buffers.push(out_buffer);
-            println!("-->   Launched device {}", dev.ordinal());
+            device_threads.push(thread);
+            device_txs.push(tx);
         }
         
-        // enumerate through out_buffers in reverse order, without consuming it by popping buffers off the end
-        for i in (0..out_buffers.len()).rev() {
-            let dev = &devices[i];
-            let out_buffer = out_buffers.pop().unwrap();
-            let result = dev.sync_reclaim(out_buffer).expect("Failed to reclaim buffer");
-            result_tx.send(result).unwrap();
-            println!("<--   Reclaimed device {}", dev.ordinal());
-        }
-    } // sender should automatically be dropped when tasks are done
+        (device_threads, device_txs)
+    };
     
-    println!("All tasks complete.");
+    println!("All background threads ready.");
+    
+    // dice and launch tasks
+    
+    println!("\nLaunching devices...");
+    
+    // iterate through devices to evenly distribute tasks
+    let mut dev_txs_iter = device_txs.iter().cycle();
+
+    for task in task_rx {
+        let next_dev = dev_txs_iter.next().unwrap();
+        next_dev.send(task).unwrap();
+    }
+    
+    println!("All forseeable tasks generated and enqueued.");
+    task_thread.join().unwrap();
+    
+    // reclaim worker threads
+    
+    for (thread, tx) in device_threads.into_iter().zip(device_txs.into_iter()) {
+        drop(tx);
+        thread.join().unwrap();
+    }
+    
+    println!("\nDevices finished and reclaimed.");
+    
+    drop(result_tx);
+    result_thread.join().unwrap();
+    
+    println!("All systems finished.");
 }
-    
-
-
-
-
-
-
-
-
-
-
-
-    // let mut dev_out_buffers = Vec::new();
-    
-    // // allocate buffers on each device
-    // for (i, dev) in devices.iter().enumerate() {
-    //     // pairs is two separate buffers on the device
-    //     let (op1, op2): (Vec<u32>, Vec<u32>) = pairs_chunked[i].iter().cloned().unzip();
-
-    //     let n = op1.len();
-    //     let cfg = LaunchConfig::for_num_elems(n as u32);
-        
-    //     let dev_op1 = dev.htod_copy(op1).expect("Failed to copy op1 to device");
-    //     let dev_op2 = dev.htod_copy(op2).expect("Failed to copy op2 to device");
-    //     let dev_nodes = dev.htod_copy(node_buffer.clone()).expect("Failed to copy nodes to device");
-
-    //     // todo out buffer should be a bit buffer
-    //     let dev_out = dev.alloc_zeros::<bool>(n * node_len as usize).expect("Failed to allocate output buffer");
-    //     dev_out_buffers.push(dev_out);
-        
-    //     // get kernel
-    //     let kernel = dev.get_func("module", "intersect_kernel").expect("Failed to get kernel");
-        
-    //     unsafe {
-    //         kernel
-    //             .launch(cfg, (&mut dev_out_buffers[i], &dev_nodes ,&dev_op1, &dev_op2, node_len as u32, n))
-    //             .expect("Failed to launch kernel");
-    //     }
-        
-    //     println!("Launched device {}", i);
-    // }
-    
-    // // reclaim buffers from each device
-    
-    // println!();
-    
-    // let mut raw_results = Vec::new();
-    
-    // for (i, dev) in devices.iter().enumerate().rev() {
-    //     let dev_out = dev_out_buffers.pop().unwrap();
-    //     let out = dev.sync_reclaim(dev_out).expect("Failed to reclaim buffer");
-    //     raw_results.push(out); // results is in reverse order
-    
-    //     println!("Reclaimed device {}", i);
-    // }
-    
-    // // aggregate results
-    // // todo wayyy too slow
-
-    // println!("\nAggregating results...");
-    
-    // let mut results_aggregated = Vec::new();
-    
-    // for (_, bit_chunk) in raw_results.iter().enumerate().rev() {
-    //     let mut results = Vec::new();
-        
-    //     for chunk in bit_chunk.chunks(node_len as usize) {
-    //         let mut node = BitSet::new();
-            
-    //         for (i, bit) in chunk.iter().enumerate() {
-    //             if *bit {
-    //                 node.insert(i + 1);
-    //             }
-    //         }
-            
-    //         results.push(node);
-    //     }
-        
-    //     results_aggregated.push(results);
-    // }
-    
-    // // print results
-    
-    // println!("Results:");
-    
-    // let total_results = results_aggregated.iter().fold(0, |acc, x| acc + x.len());
-    
-    // for (i, results) in results_aggregated.iter().enumerate() {
-    //     print!("Dev {}:", i);
-        
-    //     for result in results {
-    //         print!(" {:?}", result);
-    //     }
-        
-    //     println!();
-    // }
-
-    // println!("\nAccumulated {} results.", total_results);
-// }
