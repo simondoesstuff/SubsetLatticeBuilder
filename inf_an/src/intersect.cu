@@ -1,13 +1,14 @@
 extern "C" {
     
     typedef unsigned long long u64;
+    typedef unsigned int u32;
 
     __global__ void intersect_kernel(
             u64* out,
             const u64* nodes,
-            const u64* op1,
-            const u64* op2,
-            const u64 node_len,
+            const u32* op1,
+            const u32* op2,
+            const u32 node_len,
             const u64 amnt)
     {
         u64 id = blockIdx.x * blockDim.x + threadIdx.x;
