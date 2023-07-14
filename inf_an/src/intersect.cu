@@ -6,26 +6,39 @@ extern "C" {
     __global__ void intersect_kernel(
             u64* out,
             const u64* nodes,
-            const u32* op1,
-            const u32* op2,
             const u32 node_len,
-            const u64 amnt)
-    {
-        u64 id = blockIdx.x * blockDim.x + threadIdx.x;
+            const u32 node_amnt,
+            const u32 start,
+            const u32 stop
+    ){
+        
+        u32 id = blockIdx.x * blockDim.x + threadIdx.x + start;
 
-        if (id < amnt) {
-            u64 op1_index = op1[id] * node_len;
-            u64 op2_index = op2[id] * node_len;
-            u64 out_index = id * node_len;
+        if (id < stop) {
+            u32 out_index = node_len * (
+                (id - start)*node_amnt - ( id*(id-1) - start*(start-1) ) / 2
+            );
             
-            for (u64 i = 0; i < node_len; i++) {
-                out[out_index + i] = nodes[op1_index + i] & nodes[op2_index + i];
+            u32 op1_index = id * node_len;
+            u32 op2_index = op1_index + node_len;
+            
+            for (u32 i = 0; i < (node_amnt - id) * node_len; i++) {
+                u32 op1_i = op1_index + (i % node_len);
+                out[out_index + i] = nodes[op1_i] & nodes[op2_index + i];
             }
+            
+            
+
+            // u32 op1_index = id * node_len;
+            
+            // for (u32 i = id + 1; i < node_amnt; i++) {
+            //     u32 out_index = (id + i) * node_len; // todo fix
+            //     u32 op2_index = i * node_len;
+                
+            //     for (u32 j = 0; j < node_len; j++) {
+            //         out[out_index + j] = nodes[op1_index + j] & nodes[op2_index + j];
+            //     }
+            // }
         }
     }
-    
-    // __global__ void intersect_kernel(int a, int b) {
-    //     int c = a + b;
-    // }
-
 }

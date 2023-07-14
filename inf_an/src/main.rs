@@ -1,6 +1,8 @@
-use cudarc::driver::result::{device as res_device};
-use cudarc::driver::{CudaDevice, LaunchConfig, LaunchAsync};
-use cudarc::driver::result::{init as cuda_driver_init};
+// use cudarc::driver::result::{device as res_device};
+// use cudarc::driver::{CudaDevice, LaunchConfig, LaunchAsync};
+// use cudarc::driver::result::{init as cuda_driver_init};
+
+use rayon::prelude::*;
 
 use bit_set::BitSet;
 use std::io::BufRead;
@@ -37,12 +39,14 @@ fn load_data(filename: &str) -> (Vec<u64>, usize, u32) {
     
     // max feature needs to be a multiple of 64
     max_feature = (max_feature + 63) & !63;
-   
-    let mut node_buffer = Vec::new();
+    let node_len: u32 = max_feature / 64;
     let node_amnt = nodes.len();
+   
+    let mut node_buffer = Vec::with_capacity(node_amnt * node_len as usize);
     
     for node in nodes {
         let as_bit_vec = node.into_bit_vec();
+        let mut chunks = 0;
         let mut next_chunk: u64 = 0;
         let mut remaining = 64;
         
@@ -50,6 +54,7 @@ fn load_data(filename: &str) -> (Vec<u64>, usize, u32) {
         for bit in as_bit_vec.iter().skip(1) {
             if remaining == 0 {
                 node_buffer.push(next_chunk);
+                chunks += 1;
                 next_chunk = 0;
                 remaining = 64;
             }
@@ -61,10 +66,14 @@ fn load_data(filename: &str) -> (Vec<u64>, usize, u32) {
             remaining -= 1;
         }
 
+        chunks += 1;
         node_buffer.push(next_chunk);
+        
+        for _ in chunks..node_len {
+            node_buffer.push(0);
+        }
     }
     
-    let node_len: u32 = max_feature / 64;
     return (node_buffer, node_amnt, node_len);
 }
 
@@ -146,64 +155,64 @@ fn result_consumer_thread(node_len: u32) -> (thread::JoinHandle<()>, mpsc::Sende
 }
 
 
-fn device_thread(dev: Arc<CudaDevice>, node_buffer: Vec<u64>, node_len: u32, max_task_len: u64, result_tx: mpsc::Sender<Vec<u64>>) -> (thread::JoinHandle<()>, mpsc::Sender<Vec<(u32, u32)>>) {
-    let (tx, rx) = mpsc::channel::<Vec<(u32, u32)>>();
+// fn device_thread(dev: Arc<CudaDevice>, node_buffer: Vec<u64>, node_len: u32, max_task_len: u64, result_tx: mpsc::Sender<Vec<u64>>) -> (thread::JoinHandle<()>, mpsc::Sender<Vec<(u32, u32)>>) {
+//     let (tx, rx) = mpsc::channel::<Vec<(u32, u32)>>();
     
-    let handle = thread::spawn(move || {
-        // always bind to thread before using device
-        dev.bind_to_thread().unwrap();
+//     let handle = thread::spawn(move || {
+//         // always bind to thread before using device
+//         dev.bind_to_thread().unwrap();
         
-        // allocate buffers
+//         // allocate buffers
         
-        let mut dev_out = unsafe { dev.alloc::<u64>((max_task_len * node_len as u64).try_into().unwrap()).expect("Failed to allocate output buffer") };
-        let dev_nodes = dev.htod_copy(node_buffer).expect("Failed to copy nodes to device");
-        let mut dev_op1 = unsafe { dev.alloc::<u32>(max_task_len.try_into().unwrap()).expect("Failed to allocate op1 buffer") };
-        let mut dev_op2 = unsafe { dev.alloc::<u32>(max_task_len.try_into().unwrap()).expect("Failed to allocate op2 buffer") };
-        // additionally:   node_len,  task_len
+//         let mut dev_out = unsafe { dev.alloc::<u64>((max_task_len * node_len as u64).try_into().unwrap()).expect("Failed to allocate output buffer") };
+//         let dev_nodes = dev.htod_copy(node_buffer).expect("Failed to copy nodes to device");
+//         let mut dev_op1 = unsafe { dev.alloc::<u32>(max_task_len.try_into().unwrap()).expect("Failed to allocate op1 buffer") };
+//         let mut dev_op2 = unsafe { dev.alloc::<u32>(max_task_len.try_into().unwrap()).expect("Failed to allocate op2 buffer") };
+//         // additionally:   node_len,  task_len
 
-        // start marathon
+//         // start marathon
         
-        for task in rx {
-            let task_len = task.len();
+//         for task in rx {
+//             let task_len = task.len();
 
-            // before copying, we need the new task length to match the buffer size
-            let task = task.into_iter().chain(std::iter::repeat((0, 0)).take(max_task_len as usize - task_len)).collect::<Vec<_>>();
+//             // before copying, we need the new task length to match the buffer size
+//             let task = task.into_iter().chain(std::iter::repeat((0, 0)).take(max_task_len as usize - task_len)).collect::<Vec<_>>();
 
-            let (host_op1, host_op2): (Vec<u32>, Vec<u32>) = task.iter().cloned().unzip();
-            dev.htod_sync_copy_into(&host_op1, &mut dev_op1).expect("Failed to copy op1 to device");
-            dev.htod_sync_copy_into(&host_op2, &mut dev_op2).expect("Failed to copy op2 to device");
+//             let (host_op1, host_op2): (Vec<u32>, Vec<u32>) = task.iter().cloned().unzip();
+//             dev.htod_sync_copy_into(&host_op1, &mut dev_op1).expect("Failed to copy op1 to device");
+//             dev.htod_sync_copy_into(&host_op2, &mut dev_op2).expect("Failed to copy op2 to device");
             
-            let cfg = LaunchConfig::for_num_elems(task_len as u32);
-            let kernel = dev.get_func("module", "intersect_kernel").unwrap();
+//             let cfg = LaunchConfig::for_num_elems(task_len as u32);
+//             let kernel = dev.get_func("module", "intersect_kernel").unwrap();
             
-            unsafe {
-                kernel
-                    .launch(cfg, (
-                        &mut dev_out,
-                        &dev_nodes,
-                        &dev_op1,
-                        &dev_op2,
-                        node_len,
-                        task_len
-                    ))
-                    .expect("Failed to launch kernel");
-            }
+//             unsafe {
+//                 kernel
+//                     .launch(cfg, (
+//                         &mut dev_out,
+//                         &dev_nodes,
+//                         &dev_op1,
+//                         &dev_op2,
+//                         node_len,
+//                         task_len
+//                     ))
+//                     .expect("Failed to launch kernel");
+//             }
             
-            println!("  --->   Launched device {}", dev.ordinal());
+//             println!("  --->   Launched device {}", dev.ordinal());
             
-            let host_out = dev.dtoh_sync_copy(&dev_out).expect("Failed to copy output to host");
-            // truncate to task length to avoid sending bad data
-            let host_out = host_out.into_iter().take(task_len as usize * node_len as usize).collect::<Vec<_>>();
-            result_tx.send(host_out).unwrap();
+//             let host_out = dev.dtoh_sync_copy(&dev_out).expect("Failed to copy output to host");
+//             // truncate to task length to avoid sending bad data
+//             let host_out = host_out.into_iter().take(task_len as usize * node_len as usize).collect::<Vec<_>>();
+//             result_tx.send(host_out).unwrap();
             
-            println!("  <---   Reclaimed device {}", dev.ordinal());
-        }
+//             println!("  <---   Reclaimed device {}", dev.ordinal());
+//         }
         
-        drop(result_tx);
-    });
+//         drop(result_tx);
+//     });
     
-    return (handle, tx);
-}
+//     return (handle, tx);
+// }
 
 
 fn main() {
@@ -216,41 +225,42 @@ fn main() {
 
     println!("Initializing CUDA...");
     
-    cuda_driver_init().expect("Failed to initialize CUDA driver");
-    let dev_count = res_device::get_count().expect("Failed to get device count") as usize;
+    // cuda_driver_init().expect("Failed to initialize CUDA driver");
+    // let dev_count = res_device::get_count().expect("Failed to get device count") as usize;
+    let dev_count = 1;
     println!("Initialized CUDA. Detected {} devices.", dev_count);
     
     // get all devices
     
-    let ptx = cudarc::nvrtc::compile_ptx(
-        std::fs::read_to_string("src/intersect.cu").expect("Failed to read cu file")
-    ).expect("Failed to compile PTX");
+    // let ptx = cudarc::nvrtc::compile_ptx(
+    //     std::fs::read_to_string("src/intersect.cu").expect("Failed to read cu file")
+    // ).expect("Failed to compile PTX");
     
 
     println!("PTX compiled.");
     println!("Analyzing devices...");
     
-    let devices = {
-        let mut devices = Vec::with_capacity(dev_count);
+    // let devices = {
+    //     let mut devices = Vec::with_capacity(dev_count);
         
-        for i in 0..dev_count {
-            unsafe {
-                let cu_device = res_device::get(i as i32).expect("Failed to get device");
-                let mem = res_device::total_mem(cu_device).expect("Failed to get device memory");
-                println!("   - CUDA Dev {}: {} GB", i, mem as f64 / 10_usize.pow(9) as f64);
-            }
+    //     for i in 0..dev_count {
+    //         unsafe {
+    //             let cu_device = res_device::get(i as i32).expect("Failed to get device");
+    //             let mem = res_device::total_mem(cu_device).expect("Failed to get device memory");
+    //             println!("   - CUDA Dev {}: {} GB", i, mem as f64 / 10_usize.pow(9) as f64);
+    //         }
 
-            // using safe api
-            let new_device = CudaDevice::new(i).unwrap_or_else(|e| {
-                panic!("Failed to get device {}: {}", i, e);
-            });
+    //         // using safe api
+    //         let new_device = CudaDevice::new(i).unwrap_or_else(|e| {
+    //             panic!("Failed to get device {}: {}", i, e);
+    //         });
 
-            new_device.load_ptx(ptx.clone(), "module", &["intersect_kernel"]).expect("Failed to load PTX");
-            devices.push(new_device);
-        }
+    //         new_device.load_ptx(ptx.clone(), "module", &["intersect_kernel"]).expect("Failed to load PTX");
+    //         devices.push(new_device);
+    //     }
         
-        devices
-    };
+    //     devices
+    // };
     
     println!("Loaded kernels into all devices.");
 
@@ -284,23 +294,87 @@ fn main() {
     println!("Task consumer thread ready.");
     
     // GPU worker threads
+    // let (device_threads, device_txs) = {
+    //     let mut device_threads = Vec::with_capacity(dev_count);
+    //     let mut device_txs = Vec::with_capacity(dev_count);
+        
+    //     for dev in devices {
+    //         // unzip
+    //         let (thread, tx) = device_thread(
+    //             dev, // moving dev into thread
+    //             node_buffer.clone(),
+    //             node_len.clone(),
+    //             max_tasks_per_device.clone(),
+    //             result_tx.clone()
+    //         );
+            
+    //         device_threads.push(thread);
+    //         device_txs.push(tx);
+    //     }
+        
+    //     (device_threads, device_txs)
+    // };
+    
+    // CPU worker thread pool
     let (device_threads, device_txs) = {
         let mut device_threads = Vec::with_capacity(dev_count);
         let mut device_txs = Vec::with_capacity(dev_count);
         
-        for dev in devices {
-            // unzip
-            let (thread, tx) = device_thread(
-                dev, // moving dev into thread
-                node_buffer.clone(),
-                node_len.clone(),
-                max_tasks_per_device.clone(),
-                result_tx.clone()
-            );
+        let (tx, rx) = mpsc::channel::<Vec<(u32, u32)>>();
+        let result_tx = result_tx.clone();
+        
+        let handle = thread::spawn(move || {
+            let tasks = rx.into_iter().fold(Vec::new(), |mut acc, mut next| {
+                acc.append(&mut next);
+                acc
+            });
             
-            device_threads.push(thread);
-            device_txs.push(tx);
-        }
+            println!("Launching {} tasks...", tasks.len());
+            println!("ThreadPool: {:?} threads", rayon::max_num_threads());
+            
+            let results: Vec<u64> = tasks.into_par_iter().map(move |(i, j)| {
+                let mut result = Vec::with_capacity(node_len as usize);
+                
+                let i = i as usize;
+                let j = j as usize;
+
+                let op1 = i * node_len as usize;
+                let op2 = j * node_len as usize;
+                    
+                for k in 0..node_len {
+                    let k = k as usize;
+                    
+                    if op1 + k >= node_buffer.len() || op2 + k >= node_buffer.len() {
+                        println!("  -  Out of bounds: {} {} {} {}", op1, op2, k, node_buffer.len());
+                        println!("  -  i: {} j: {}", i, j);
+                        println!("  -  node_len: {} node_amnt: {}", node_len, node_amnt);
+                    }
+                    
+                    let node_i = node_buffer[op1 + k];
+                    let node_j = node_buffer[op2 + k];
+
+                    result.push(node_i & node_j);
+                }
+                
+                if i + j % 10000 == 0 {
+                    println!("{}", i + j);
+                }
+                
+                result
+            })
+            .collect::<Vec<Vec<u64>>>()
+            .into_iter()
+            .fold(Vec::new(), |mut acc, mut next| {
+                acc.append(&mut next);
+                acc
+            });
+            
+            println!("Done");
+            result_tx.send(results).unwrap();
+        });
+
+        device_threads.push(handle);
+        device_txs.push(tx);
         
         (device_threads, device_txs)
     };
