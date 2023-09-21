@@ -2,10 +2,13 @@ from typing import AbstractSet, Iterable, Self
 
 
 class node(frozenset):
-    def __init__(self, initial: str | Iterable = None) -> None:
+    def __new__(cls, initial: str | Iterable = None) -> Self:
         if isinstance(initial, str):
             initial = [int(x) for x in initial.split()]
-        super().__new__(node, initial)
+        if initial is None:
+            return super().__new__(cls)
+        else:
+            return super().__new__(cls, initial)
 
     def __repr__(self) -> str:
         return f'({",".join(str(x) for x in sorted(self))})'
