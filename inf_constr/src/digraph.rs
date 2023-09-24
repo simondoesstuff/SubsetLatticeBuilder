@@ -6,21 +6,24 @@ type EdgeList = RwLock<BitSet>;
 
 pub struct Node {
     pub contents: BitSet,
-    pub potential: BitSet,
+    // potential is rwlocked because it is
+    // modified by the algorithm during execution,
+    // but the contents is fixed after initialization.
+    pub potential: RwLock<BitSet>,
 }
 
 impl Node {
-    pub fn new() -> Self {
+    pub fn new(contents: Option<BitSet>, potential: Option<BitSet>) -> Self {
         Node {
-            contents: BitSet::new(),
-            potential: BitSet::new(),
+            contents: contents.unwrap_or(BitSet::new()),
+            potential: RwLock::new(potential.unwrap_or(BitSet::new())),
         }
     }
 }
 
 impl Default for Node {
     fn default() -> Self {
-        Node::new()
+        Node::new(None, None)
     }
 }
 
@@ -63,6 +66,11 @@ impl DiGraph {
             nodes.push(node);
             edges.push(RwLock::new(BitSet::new()));
         }
+    }
+
+    /// Amount of nodes in the graph.
+    pub fn len(&self) -> usize {
+        self.nodes.read().len()
     }
 }
 

@@ -6,42 +6,48 @@ use crate::by_size::nodes_by_size;
 use crate::digraph::{DiGraph, Node};
 use bit_set::BitSet;
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, LineWriter, Write};
-use std::sync::Arc;
+use parking_lot::RwLock;
+use crate::traversal::find_parents_dfs;
 
-/*
 fn parse_input(path: &str) -> Vec<BitSet> {
-    // todo this needs to clean the data -- currently not distinct or sorted
     let file = File::open(path).expect("file not found");
     let reader = BufReader::new(file);
 
-    return reader
+    let node_set = reader
         .lines()
         .map(|line| {
             let line = line.unwrap(); // ignore errors
             let labels = line.split(" ");
             let as_num = labels.map(|label| label.parse::<usize>());
-            let mut bs = BitSet::new();
+            let mut node = BitSet::new();
 
             for n in as_num {
-                bs.insert(n.unwrap());
+                node.insert(n.expect("Failed to parse input. Expected integer values only."));
             }
 
-            return bs;
-        })
-        .collect::<Vec<BitSet>>();
+            return node;
+        }).collect::<HashSet<BitSet>>();
+
+    return node_set.into_iter().collect::<Vec<BitSet>>();
 }
 
 fn export_graph(path: &str, graph: &DiGraph) {
     let file = File::create(path).unwrap();
     let mut writer = LineWriter::new(file);
 
-    for (parent_id, edges) in graph.edges.iter().enumerate() {
-        for child_id in edges {
-            let parent = &graph.nodes[parent_id];
-            let child = &graph.nodes[child_id];
+    // read lock edges & nodes
+    let edges = graph.edges.read();
+    let edge_iter = edges.iter().enumerate();
+    let nodes = graph.nodes.read();
+    let read_node = |id: usize| &nodes[id].contents;
+
+    for (parent_id, out) in edge_iter {
+        for child_id in out.read().iter() {
+            let parent = read_node(parent_id);
+            let child = read_node(child_id);
             let parent_str = parent
                 .iter()
                 .map(|n| n.to_string())
@@ -63,10 +69,8 @@ fn export_graph(path: &str, graph: &DiGraph) {
 fn inf_constr_alg(in_path: &str, out_path: &str) {
     // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
+    // todo strategy of pushing root to end won't work anymore in light of now adding new nodes at execution time
     node_contents.push(BitSet::new()); // null node keeps track of roots
-
-    // edges correspond to nodes by index
-    let edges = vec![BitSet::new(); node_contents.len()];
 
     // separate nodes into layers (by size)
     let layers: HashMap<usize, Vec<usize>> = nodes_by_size(&node_contents);
@@ -78,30 +82,33 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
         keys
     };
 
-    let mut graph = DiGraph {
-        nodes: node_contents,
-        edges,
+    let edges = (0..node_contents.len())
+        .map(|_| RwLock::new(BitSet::new()))
+        .collect::<Vec<RwLock<BitSet>>>();
+    let graph = DiGraph {
+        edges: RwLock::new(edges),
+        nodes: RwLock::new({
+            node_contents
+                .into_iter()
+                .map(|contents| Node::new(Some(contents), None))
+                .collect()
+        }),
     };
 
     // timing
     let t_1 = std::time::Instant::now();
     let mut n_1_sqrt: usize = 0;
-    let n_2 = graph.nodes.len() as f64 * graph.nodes.len() as f64;
+    let n_2 = graph.len() as f64 * graph.len() as f64;
 
     // start the algorithm
     for layer_key in layer_keys.iter().skip(1) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
 
-        let new_edges: Vec<(&usize, BitSet)> = layer
+        layer
             .par_iter()
-            .map(|new_node| (new_node, find_parents_dfs(&graph, new_node)))
-            .collect(); // collect -- join the threads
-
-        // apply changes in sync
-        for (child, edges) in new_edges {
-            graph.apply_parent_edges(child, &edges);
-        }
+            .map(|new_node| find_parents_dfs(&graph, new_node))
+            .collect::<()>(); // collect -- join the threads
 
         // timing
         n_1_sqrt += layer.len();
@@ -119,29 +126,31 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
     }
 
     // remove null node, which was only used to track roots
-    graph.nodes.pop();
-    graph.edges.pop();
+    let mut nodes = graph.nodes.write();
+    let mut edges = graph.edges.write();
+    nodes.pop();
+    edges.pop();
 
     println!("Done. Exporting solution...");
     export_graph(out_path, &graph);
-}*/
+}
 
 fn main() {
-    // let args = std::env::args().collect::<Vec<String>>();
-    //
-    // let in_path = if let Some(path) = args.get(1) {
-    //     path
-    // } else {
-    //     eprintln!("No input file specified");
-    //     std::process::exit(1);
-    // };
-    //
-    // let out_path = if let Some(path) = args.get(2) {
-    //     path
-    // } else {
-    //     eprintln!("No output file specified");
-    //     std::process::exit(1);
-    // };
-    //
-    // inf_constr_alg(in_path, out_path);
+    let args = std::env::args().collect::<Vec<String>>();
+
+    let in_path = if let Some(path) = args.get(1) {
+        path
+    } else {
+        eprintln!("No input file specified");
+        std::process::exit(1);
+    };
+
+    let out_path = if let Some(path) = args.get(2) {
+        path
+    } else {
+        eprintln!("No output file specified");
+        std::process::exit(1);
+    };
+
+    inf_constr_alg(in_path, out_path);
 }
