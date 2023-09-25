@@ -1,4 +1,4 @@
-use crate::digraph::{DiGraph, Node};
+use crate::digraph::{DiGraph, Node, NodeCoord};
 use bit_set::BitSet;
 use std::collections::{HashSet, VecDeque};
 
@@ -17,32 +17,30 @@ pub fn scan() {}
 /// It assumes that the the ideal parent node is within the search.
 /// That is, it relies on the entirety of the data that's made of smaller
 /// nodes than the new node.
-pub fn find_parents_dfs(graph: &DiGraph, new_node: &usize) {
-    // todo should be a hashset
-    let mut new_edges = BitSet::new();
-    // todo not sure why this is starting at the end
-    let mut stack: VecDeque<usize> = VecDeque::from([graph.len() - 1]);
-    let mut visited: HashSet<usize> = HashSet::default();
+pub fn find_parents_dfs(graph: &DiGraph, new_node: NodeCoord) -> HashSet<NodeCoord> {
+    // todo can this be a vector?
+    let mut new_edges: HashSet<NodeCoord> = HashSet::default();
+    let origin_node = NodeCoord(0, graph.len() - 1);
+    let mut stack: VecDeque<NodeCoord> = VecDeque::from([origin_node]);
+    let mut visited: HashSet<NodeCoord> = HashSet::default();
 
     while stack.len() > 0 {
         let parent_id = stack.pop_back().unwrap();
-        visited.insert(parent_id);
-
-        let childs = graph.out(parent_id);
+        let childs = graph.out(&parent_id);
+        visited.insert(parent_id.clone());
 
         let mut deadend = true;
-        for child_id in &childs {
+        for child_id in childs {
             if visited.contains(&child_id) {
                 deadend = false;
                 continue;
             }
 
-            let nodes = graph.nodes.read();
-            let child_content = &nodes[child_id].contents;
-            let new_node_content = &nodes[*new_node].contents;
+            let child_content = graph.node_content(child_id);
+            let new_node_content = graph.node_content(&new_node);
 
             if is_proper_subset(child_content, new_node_content) {
-                stack.push_back(child_id);
+                stack.push_back((*child_id).clone());
                 deadend = false;
             }
         } // release lock
@@ -52,11 +50,5 @@ pub fn find_parents_dfs(graph: &DiGraph, new_node: &usize) {
         }
     }
 
-    // write new edges
-
-    let edges = graph.edges.read();
-
-    for parent_id in &new_edges {
-        edges[parent_id].write().insert(*new_node);
-    } // release lock
+    return new_edges;
 }

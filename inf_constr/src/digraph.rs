@@ -1,22 +1,28 @@
 use bit_set::BitSet;
-use parking_lot::RwLock;
 
 
-type EdgeList = RwLock<BitSet>;
+/// Pass ID, Node ID
+#[derive(Eq, Hash, PartialEq)] // todo learn this
+pub struct NodeCoord(pub u16, pub usize);
+
+impl Clone for NodeCoord {
+    fn clone(&self) -> Self {
+        NodeCoord(self.0, self.1)
+    }
+}
+
+pub type EdgeList = Vec<NodeCoord>;
 
 pub struct Node {
     pub contents: BitSet,
-    // potential is rwlocked because it is
-    // modified by the algorithm during execution,
-    // but the contents is fixed after initialization.
-    pub potential: RwLock<BitSet>,
+    pub potential: BitSet,
 }
 
 impl Node {
     pub fn new(contents: Option<BitSet>, potential: Option<BitSet>) -> Self {
         Node {
             contents: contents.unwrap_or(BitSet::new()),
-            potential: RwLock::new(potential.unwrap_or(BitSet::new())),
+            potential: potential.unwrap_or(BitSet::new()),
         }
     }
 }
@@ -27,55 +33,54 @@ impl Default for Node {
     }
 }
 
-// exclusively relies on interior mutability
 pub struct DiGraph {
-    pub nodes: RwLock<Vec<Node>>,
-    pub edges: RwLock<Vec<EdgeList>>,
+    pub data: Vec<Vec<(Node, EdgeList)>>,
+    len: usize,
 }
 
 impl DiGraph {
-    pub fn new() -> Self {
-        return DiGraph {
-            nodes: RwLock::new(Vec::new()),
-            edges: RwLock::new(Vec::new()),
-        };
+    pub fn new(default_nodes: Option<Vec<BitSet>>) -> Self {
+        let nodes = default_nodes.clone().unwrap_or_default();
+
+        DiGraph {
+            len: nodes.len(),
+            data: vec![
+                {
+                    nodes
+                        .into_iter()
+                        .map(|node| (Node::new(Some(node), None), Vec::new()))
+                        .collect::<Vec<(Node, EdgeList)>>()
+                }
+            ],
+        }
     }
 
-    pub fn edge(&self, from: usize, to: usize) {
-        self.edges.read()[from].write().insert(to);
+    pub fn get_node(&self, coord: &NodeCoord) -> &Node {
+        &self.data[coord.0 as usize][coord.1].0
+    }
+
+    pub fn node_content(&self, coord: &NodeCoord) -> &BitSet {
+        &self.get_node(coord).contents
     }
 
     /// Out edges from a node.
-    pub fn out(&self, from: usize) -> BitSet {
-        self.edges.read()[from].read().clone()
+    pub fn out(&self, from: &NodeCoord) -> &EdgeList {
+        &self.data[from.0 as usize][from.1].1
     }
 
-    /// Expensive operation because it requires a lock on the entire graph.
-    pub fn add_node(&self, new_node: Node) {
-        let mut nodes = self.nodes.write();
-        let mut edges = self.edges.write();
-        nodes.push(new_node);
-        edges.push(RwLock::new(BitSet::new()));
-    }
-
-    /// Expensive operation because it requires a lock on the entire graph.
     pub fn add_nodes(&self, new_nodes: Vec<Node>) {
-        let mut nodes = self.nodes.write();
-        let mut edges = self.edges.write();
-        for node in new_nodes {
-            nodes.push(node);
-            edges.push(RwLock::new(BitSet::new()));
-        }
+        // todo important for len()
+        panic!("Not implemented")
     }
 
     /// Amount of nodes in the graph.
     pub fn len(&self) -> usize {
-        self.nodes.read().len()
+        self.len
     }
 }
 
 impl Default for DiGraph {
     fn default() -> Self {
-        DiGraph::new()
+        DiGraph::new(None)
     }
 }

@@ -3,7 +3,7 @@ mod digraph;
 mod traversal;
 
 use crate::by_size::nodes_by_size;
-use crate::digraph::{DiGraph, Node};
+use crate::digraph::{DiGraph, EdgeList, Node, NodeCoord};
 use bit_set::BitSet;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -38,28 +38,26 @@ fn export_graph(path: &str, graph: &DiGraph) {
     let file = File::create(path).unwrap();
     let mut writer = LineWriter::new(file);
 
-    // read lock edges & nodes
-    let edges = graph.edges.read();
-    let edge_iter = edges.iter().enumerate();
-    let nodes = graph.nodes.read();
-    let read_node = |id: usize| &nodes[id].contents;
+    for (x0, row) in graph.data.iter().enumerate() {
+        for (x1, node) in row.iter().enumerate() {
+            let entry = &graph.data[x0][x1];
+            let parent = &entry.0.contents;
 
-    for (parent_id, out) in edge_iter {
-        for child_id in out.read().iter() {
-            let parent = read_node(parent_id);
-            let child = read_node(child_id);
-            let parent_str = parent
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<String>>()
-                .join(" ");
-            let child_str = child
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<String>>()
-                .join(" ");
-            let line = format!("{} -> {}\n", parent_str, child_str);
-            writer.write_all(line.as_bytes()).unwrap();
+            for child_id in &entry.1 {
+                let child = &graph.get_node(&child_id).contents;
+                let parent_str = parent
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
+                let child_str = child
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
+                let line = format!("{} -> {}\n", parent_str, child_str);
+                writer.write_all(line.as_bytes()).unwrap();
+            }
         }
     }
 
@@ -69,7 +67,6 @@ fn export_graph(path: &str, graph: &DiGraph) {
 fn inf_constr_alg(in_path: &str, out_path: &str) {
     // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
-    // todo strategy of pushing root to end won't work anymore in light of now adding new nodes at execution time
     node_contents.push(BitSet::new()); // null node keeps track of roots
 
     // separate nodes into layers (by size)
@@ -82,18 +79,7 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
         keys
     };
 
-    let edges = (0..node_contents.len())
-        .map(|_| RwLock::new(BitSet::new()))
-        .collect::<Vec<RwLock<BitSet>>>();
-    let graph = DiGraph {
-        edges: RwLock::new(edges),
-        nodes: RwLock::new({
-            node_contents
-                .into_iter()
-                .map(|contents| Node::new(Some(contents), None))
-                .collect()
-        }),
-    };
+    let mut graph = DiGraph::new(Some(node_contents));
 
     // timing
     let t_1 = std::time::Instant::now();
@@ -105,10 +91,10 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
 
-        layer
+        let results: Vec<HashSet<NodeCoord>> = layer
             .par_iter()
-            .map(|new_node| find_parents_dfs(&graph, new_node))
-            .collect::<()>(); // collect -- join the threads
+            .map(|new_node| find_parents_dfs(&graph, NodeCoord(0, *new_node)))
+            .collect(); // collect -- join the threads
 
         // timing
         n_1_sqrt += layer.len();
@@ -126,10 +112,7 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
     }
 
     // remove null node, which was only used to track roots
-    let mut nodes = graph.nodes.write();
-    let mut edges = graph.edges.write();
-    nodes.pop();
-    edges.pop();
+    graph.data[0].pop();
 
     println!("Done. Exporting solution...");
     export_graph(out_path, &graph);
