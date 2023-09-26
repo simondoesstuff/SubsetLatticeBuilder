@@ -63,6 +63,10 @@ impl DiGraph {
         &self.get_node(coord).contents
     }
 
+    pub fn edge(&mut self, from: &NodeCoord, to: NodeCoord) {
+        self.data[from.0 as usize][from.1].1.push(to);
+    }
+
     /// Out edges from a node.
     pub fn out(&self, from: &NodeCoord) -> &EdgeList {
         &self.data[from.0 as usize][from.1].1
