@@ -91,7 +91,7 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
 
-        let results: Vec<(usize, HashSet<NodeCoord>)> = layer
+        let results: Vec<(usize, Vec<NodeCoord>)> = layer
             .par_iter()
             .map(|new_node| (*new_node, find_parents_dfs(&graph, NodeCoord(0, *new_node))))
             .collect(); // collect -- join the threads

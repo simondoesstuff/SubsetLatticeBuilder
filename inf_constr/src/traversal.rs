@@ -17,9 +17,8 @@ pub fn scan() {}
 /// It assumes that the the ideal parent node is within the search.
 /// That is, it relies on the entirety of the data that's made of smaller
 /// nodes than the new node.
-pub fn find_parents_dfs(graph: &DiGraph, new_node: NodeCoord) -> HashSet<NodeCoord> {
-    // todo can this be a vector?
-    let mut new_edges: HashSet<NodeCoord> = HashSet::default();
+pub fn find_parents_dfs(graph: &DiGraph, new_node: NodeCoord) -> Vec<NodeCoord> {
+    let mut new_edges: Vec<NodeCoord> = Vec::default();
     let origin_node = NodeCoord(0, graph.len() - 1);
     let mut stack: VecDeque<NodeCoord> = VecDeque::from([origin_node]);
     let mut visited: HashSet<NodeCoord> = HashSet::default();
@@ -46,7 +45,7 @@ pub fn find_parents_dfs(graph: &DiGraph, new_node: NodeCoord) -> HashSet<NodeCoo
         } // release lock
 
         if deadend {
-            new_edges.insert(parent_id);
+            new_edges.push(parent_id);
         }
     }
 
