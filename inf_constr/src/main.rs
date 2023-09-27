@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, LineWriter, Write};
 use parking_lot::RwLock;
-use crate::traversal::find_parents_dfs;
+use crate::traversal::find_children_dfs;
 
 fn parse_input(path: &str) -> Vec<BitSet> {
     let file = File::open(path).expect("file not found");
@@ -55,7 +55,9 @@ fn export_graph(path: &str, graph: &DiGraph) {
                     .map(|n| n.to_string())
                     .collect::<Vec<String>>()
                     .join(" ");
-                let line = format!("{} -> {}\n", parent_str, child_str);
+                // let line = format!("{} -> {}\n", parent_str, child_str);
+                // reversed
+                let line = format!("{} -> {}\n", child_str, parent_str);
                 writer.write_all(line.as_bytes()).unwrap();
             }
         }
@@ -67,7 +69,11 @@ fn export_graph(path: &str, graph: &DiGraph) {
 fn inf_constr_alg(in_path: &str, out_path: &str) {
     // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
-    node_contents.push(BitSet::new()); // null node keeps track of roots
+    let super_node = node_contents.iter().fold(BitSet::new(), |mut acc, node| {
+        acc.union_with(node);
+        acc
+    });
+    node_contents.push(super_node); // add super node to the end // todo this is a hack
 
     // separate nodes into layers (by size)
     let layers: HashMap<usize, Vec<usize>> = nodes_by_size(&node_contents);
@@ -75,7 +81,8 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
     // sort layer keys by size so we iterate higher layers first
     let layer_keys = {
         let mut keys = layers.keys().map(|k| *k).collect::<Vec<usize>>();
-        keys.sort_by(|a, b| a.cmp(b));
+        // note the .reverse()
+        keys.sort_by(|a, b| a.cmp(b).reverse());
         keys
     };
 
@@ -93,12 +100,12 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
 
         let results: Vec<(usize, Vec<NodeCoord>)> = layer
             .par_iter()
-            .map(|new_node| (*new_node, find_parents_dfs(&graph, NodeCoord(0, *new_node))))
+            .map(|new_node| (*new_node, find_children_dfs(&graph, NodeCoord(0, *new_node))))
             .collect(); // collect -- join the threads
 
-        for (child, parents) in results {
-            for parent in parents {
-                graph.edge(&parent, NodeCoord(0, child));
+        for (current, connections) in results {
+            for connection in connections {
+                graph.edge(&connection, NodeCoord(0, current));
             }
         }
 
