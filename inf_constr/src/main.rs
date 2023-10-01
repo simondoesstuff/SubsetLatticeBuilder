@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, LineWriter, Write};
 use parking_lot::RwLock;
-use crate::traversal::find_children_dfs;
+use crate::traversal::{find_children_dfs, find_forks, Fork};
 
 fn parse_input(path: &str) -> Vec<BitSet> {
     let file = File::open(path).expect("file not found");
@@ -98,14 +98,32 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
 
-        let results: Vec<(usize, Vec<NodeCoord>)> = layer
+        let results: Vec<(NodeCoord, Vec<Fork>, Vec<BitSet>)> = layer
             .par_iter()
-            .map(|new_node| (*new_node, find_children_dfs(&graph, NodeCoord(0, *new_node))))
+            .map(|new_node| {
+                let new_node_id = NodeCoord(0, *new_node);
+                let new_node_content = graph.node_content(&new_node_id);
+                // note, setting the threshold to length means only direct parent -> child edges are
+                // considered, no inferred nodes
+                let similarity_threshold = new_node_content.len() as u32;
+                let (forks, inf_nodes) = find_forks(&graph, new_node_id.clone(), similarity_threshold);
+                (new_node_id, forks, inf_nodes)
+            })
             .collect(); // collect -- join the threads
 
-        for (current, connections) in results {
-            for connection in connections {
-                graph.edge(&connection, NodeCoord(0, current));
+        for (new_node, forks, inferred_nodes) in results {
+            // println!("New node: {:?}, forks: {:?}, inf: {:?}", new_node.1, forks.len(), inferred_nodes.len());
+            // todo, this is incomplete, currently ignoring inferred nodes
+            for fork in forks {
+                match fork {
+                    (n1, None) => {
+                        graph.edge(&n1, new_node.clone());
+                        // println!("Fork: {:?} -> {:?}", n1, new_node);
+                    },
+                    (n1, Some((x, n2))) => {
+                        // println!("Fork: {:?} --- {:?} -> {:?}", n1, x, n2);
+                    }
+                }
             }
         }
 

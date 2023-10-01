@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use bit_set::BitSet;
 
 
@@ -11,8 +12,15 @@ impl Clone for NodeCoord {
     }
 }
 
+impl Debug for NodeCoord {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.0, self.1)
+    }
+}
+
 pub type EdgeList = Vec<NodeCoord>;
 
+// todo Node no longer needs 'potential' field
 pub struct Node {
     pub contents: BitSet,
     pub potential: BitSet,
