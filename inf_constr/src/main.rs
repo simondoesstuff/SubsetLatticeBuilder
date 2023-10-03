@@ -1,16 +1,17 @@
-mod by_size;
-mod digraph;
-mod traversal;
-
-use crate::by_size::nodes_by_size;
-use crate::digraph::{DiGraph, EdgeList, Node, NodeCoord};
-use bit_set::BitSet;
-use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, LineWriter, Write};
-use parking_lot::RwLock;
-use crate::traversal::{find_children_dfs, find_forks, Fork};
+
+use bit_set::BitSet;
+use rayon::prelude::*;
+
+use crate::by_size::nodes_by_size;
+use crate::digraph::{DiGraph, NodeCoord};
+use crate::traversal::{EdgeOp, inferred_analysis};
+
+mod by_size;
+mod digraph;
+mod traversal;
 
 fn parse_input(path: &str) -> Vec<BitSet> {
     let file = File::open(path).expect("file not found");
@@ -41,10 +42,10 @@ fn export_graph(path: &str, graph: &DiGraph) {
     for (x0, row) in graph.data.iter().enumerate() {
         for (x1, node) in row.iter().enumerate() {
             let entry = &graph.data[x0][x1];
-            let parent = &entry.0.contents;
+            let parent = &entry.0;
 
             for child_id in &entry.1 {
-                let child = &graph.get_node(&child_id).contents;
+                let child = &graph.get_node(&child_id);
                 let parent_str = parent
                     .iter()
                     .map(|n| n.to_string())
@@ -66,14 +67,16 @@ fn export_graph(path: &str, graph: &DiGraph) {
     writer.flush().unwrap();
 }
 
-fn inf_constr_alg(in_path: &str, out_path: &str) {
+fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
     // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
+    // todo this no longer is necessary, just use dummy
     let super_node = node_contents.iter().fold(BitSet::new(), |mut acc, node| {
         acc.union_with(node);
         acc
     });
-    node_contents.push(super_node); // add super node to the end // todo this is a hack
+    // let super_node = BitSet::new();
+    node_contents.push(super_node);
 
     // separate nodes into layers (by size)
     let layers: HashMap<usize, Vec<usize>> = nodes_by_size(&node_contents);
@@ -98,34 +101,51 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
         // entire layer is handled at once
         let layer = &layers[layer_key];
 
-        let results: Vec<(NodeCoord, Vec<Fork>, Vec<BitSet>)> = layer
+        let results: Vec<(Vec<EdgeOp>, Vec<BitSet>)> = layer
             .par_iter()
             .map(|new_node| {
                 let new_node_id = NodeCoord(0, *new_node);
                 let new_node_content = graph.node_content(&new_node_id);
                 // note, setting the threshold to length means only direct parent -> child edges are
                 // considered, no inferred nodes
-                let similarity_threshold = new_node_content.len() as u32;
-                let (forks, inf_nodes) = find_forks(&graph, new_node_id.clone(), similarity_threshold);
-                (new_node_id, forks, inf_nodes)
+                let similarity_threshold: u32 = (similarity_coefficient * (new_node_content.len() as f32)) as u32;
+                let (results, inf_nodes) = inferred_analysis(&graph, new_node_id.clone(), similarity_threshold);
+                (results, inf_nodes)
             })
             .collect(); // collect -- join the threads
 
-        for (new_node, forks, inferred_nodes) in results {
-            // println!("New node: {:?}, forks: {:?}, inf: {:?}", new_node.1, forks.len(), inferred_nodes.len());
-            // todo, this is incomplete, currently ignoring inferred nodes
-            for fork in forks {
-                match fork {
-                    (n1, None) => {
-                        graph.edge(&n1, new_node.clone());
-                        // println!("Fork: {:?} -> {:?}", n1, new_node);
+        graph.push_layer();
+
+        for (ops, inferred_nodes) in results {
+            // Forks are (usually) in form:     N1 --- x -> N2
+            // x represents the intersection. In the fork, it is an id, 0-indexed,
+            // and it corresponds to a node in the inferred_nodes vector. These
+            // nodes are first added to the graph and the ids are adjusted
+            // to represent the coordinates in the graph.
+
+            let assigned_coords = graph.bulk_add(inferred_nodes);
+
+            for op in ops {
+                match op {
+                    EdgeOp::Add_RealReal(from, to) => {
+                        graph.edge(&from, to);
                     },
-                    (n1, Some((x, n2))) => {
-                        // println!("Fork: {:?} --- {:?} -> {:?}", n1, x, n2);
+                    EdgeOp::Add_RealInferred(from, to) => {
+                        let to = &assigned_coords[to as usize];
+                        graph.edge(&from, to.clone());
+                    },
+                    EdgeOp::Add_InferredReal(from, to) => {
+                        let from = &assigned_coords[from as usize];
+                        graph.edge(from, to);
+                    },
+                    EdgeOp::Del(from, to) => {
+                        graph.remove_edge(&from, &to);
                     }
                 }
             }
         }
+
+        println!("Graph len: {:?}", graph.len());
 
         // timing
         n_1_sqrt += layer.len();
@@ -152,6 +172,14 @@ fn inf_constr_alg(in_path: &str, out_path: &str) {
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
 
+    // todo remove hard coded paths
+    let args = vec![
+        args[0].clone(),
+        "../data/dirty/79867.txt".to_string(),
+        "../data/tmp/79867.soln".to_string(),
+        ".9".to_string(),
+    ];
+
     let in_path = if let Some(path) = args.get(1) {
         path
     } else {
@@ -166,5 +194,14 @@ fn main() {
         std::process::exit(1);
     };
 
-    inf_constr_alg(in_path, out_path);
+    let similarity = if let Some(similarity) = args.get(3) {
+        similarity.parse::<f32>().expect("Failed to parse similarity coefficient.")
+    } else {
+        eprintln!("No similarity coefficient specified. Defaulting to 1");
+        1.0
+    };
+
+    println!("Running with similarity coefficient: {}", similarity);
+
+    inf_constr_alg(in_path, out_path, similarity);
 }

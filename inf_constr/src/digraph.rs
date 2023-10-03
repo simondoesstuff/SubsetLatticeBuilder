@@ -19,27 +19,7 @@ impl Debug for NodeCoord {
 }
 
 pub type EdgeList = Vec<NodeCoord>;
-
-// todo Node no longer needs 'potential' field
-pub struct Node {
-    pub contents: BitSet,
-    pub potential: BitSet,
-}
-
-impl Node {
-    pub fn new(contents: Option<BitSet>, potential: Option<BitSet>) -> Self {
-        Node {
-            contents: contents.unwrap_or(BitSet::new()),
-            potential: potential.unwrap_or(BitSet::new()),
-        }
-    }
-}
-
-impl Default for Node {
-    fn default() -> Self {
-        Node::new(None, None)
-    }
-}
+pub type Node = BitSet;
 
 pub struct DiGraph {
     pub data: Vec<Vec<(Node, EdgeList)>>,
@@ -56,7 +36,7 @@ impl DiGraph {
                 {
                     nodes
                         .into_iter()
-                        .map(|node| (Node::new(Some(node), None), Vec::new()))
+                        .map(|node| (node, Vec::new()))
                         .collect::<Vec<(Node, EdgeList)>>()
                 }
             ],
@@ -68,11 +48,24 @@ impl DiGraph {
     }
 
     pub fn node_content(&self, coord: &NodeCoord) -> &BitSet {
-        &self.get_node(coord).contents
+        &self.get_node(coord)
+    }
+
+    pub fn splice_edge(&mut self, from: &NodeCoord, middle: NodeCoord, to: NodeCoord) {
+        // take edge from --> to
+        // and replace with from --> middle --> to
+
+        self.data[from.0 as usize][from.1].1.retain(|n| n != &to);
+        self.data[middle.0 as usize][middle.1].1.push(to);
+        self.data[from.0 as usize][from.1].1.push(middle);
     }
 
     pub fn edge(&mut self, from: &NodeCoord, to: NodeCoord) {
         self.data[from.0 as usize][from.1].1.push(to);
+    }
+
+    pub fn remove_edge(&mut self, from: &NodeCoord, to: &NodeCoord) {
+        self.data[from.0 as usize][from.1].1.retain(|n| n != to);
     }
 
     /// Out edges from a node.
@@ -80,9 +73,36 @@ impl DiGraph {
         &self.data[from.0 as usize][from.1].1
     }
 
-    pub fn add_nodes(&self, new_nodes: Vec<Node>) {
-        // todo important for len()
-        panic!("Not implemented")
+    /// Adds a new layer to the graph. New nodes are added to the top layer.
+    pub fn push_layer(&mut self) {
+        // shouldn't ever have an issue, graph should be initialized with at least one layer
+        // this should significantly reduce resizing
+        let prev_capacity = self.data.last().unwrap().capacity();
+        self.data.push(Vec::with_capacity(prev_capacity));
+    }
+
+    /// Finds the coordinate of the latest node added to the graph.
+    /// That is, the greatest node ID on the greatest layer.
+    pub fn next_open_coord(&self) -> NodeCoord {
+        let top_layer = self.data.len() - 1;
+        let top_node = self.data[top_layer].len();
+        NodeCoord(top_layer as u16, top_node)
+    }
+
+    /// Adds a set of nodes to the latest layer of the graph.
+    /// Returns the coordinates that were assigned.
+    pub fn bulk_add(&mut self, new_nodes: Vec<Node>) -> Vec<NodeCoord> {
+        self.len += new_nodes.len();
+        let mut coords = Vec::with_capacity(new_nodes.len());
+        let top = self.next_open_coord();
+
+        for (i, node) in new_nodes.into_iter().enumerate() {
+            let coord = NodeCoord(top.0, top.1 + i);
+            self.data[top.0 as usize].push((node, Vec::new()));
+            coords.push(coord);
+        }
+
+        coords
     }
 
     /// Amount of nodes in the graph.

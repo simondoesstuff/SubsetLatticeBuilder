@@ -1,6 +1,13 @@
-use crate::digraph::{DiGraph, Node, NodeCoord};
-use bit_set::{BitSet, Intersection};
+use crate::digraph::{DiGraph, NodeCoord};
+use bit_set::{BitSet};
 use std::collections::{HashMap, HashSet, VecDeque};
+
+pub enum EdgeOp {
+    Add_RealReal(NodeCoord, NodeCoord),
+    Add_RealInferred(NodeCoord, u16),
+    Add_InferredReal(u16, NodeCoord),
+    Del(NodeCoord, NodeCoord)
+}
 
 fn is_proper_subset(a: &BitSet, b: &BitSet) -> bool {
     a.len() < b.len() && a.is_subset(b)
@@ -10,18 +17,19 @@ fn is_proper_superset(a: &BitSet, b: &BitSet) -> bool {
     a.len() < b.len() && a.is_superset(b)
 }
 
-// note that u16 may not be sufficient for large graphs
-/// form: (N1, x, N2), representing the fork along edge N1 --- x --> N2
-/// Note that x is the intersection of N1 and N2. And,
-/// the edges are bottom-up, that is N1 is a superset of N2.
-/// If the fork denotes a leaf node connection and not a fork,
-/// the form is (N1, none) implying N1 ---> New Node
-pub type Fork = (NodeCoord, Option<(u16, NodeCoord)>);
-
 fn intersect(a: &BitSet, b: &BitSet) -> BitSet {
+    // todo note allocating and freeing vec here is slow
     let intersection = a.intersection(b);
-    let mut vec = Vec::<u32>::with_capacity(intersection.size_hint().0);
+    let capacity = {
+        let hint = intersection.size_hint();
+        if hint.1.is_some() {
+            hint.1.unwrap()
+        } else {
+            hint.0
+        }
+    };
 
+    let mut vec = Vec::<u32>::with_capacity(capacity);
     for n in intersection {
         vec.push(n as u32);
     }
@@ -41,21 +49,25 @@ fn intersect(a: &BitSet, b: &BitSet) -> BitSet {
 /// superset of the other. In this case, it creates a new node representing
 /// the relevant intersection and stores the fork. Forks will only be created
 /// if the magnitude of the intersection is >= similarity_min.
-pub fn find_forks(graph: &DiGraph, new_id: NodeCoord, similarity_threshold: u32) -> (Vec<Fork>, Vec<BitSet>) {
-    let mut forks = Vec::<Fork>::default();
+pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshold: u32) -> (Vec<EdgeOp>, Vec<BitSet>) {
+    let new_node = graph.node_content(&new_id);
+
+    let mut ops = Vec::<EdgeOp>::default();
     let mut new_nodes = HashMap::<BitSet, u16>::default();
     let mut visited = HashSet::<NodeCoord>::default();
 
-    // form (N1, x intersection with N1, N2)
-    // ie: N1 -> N2, storing edges (N1 -> x -> N2) and potential node x
-    let origin_node: (NodeCoord, BitSet, NodeCoord) = (
-        NodeCoord(0, 0),
-        BitSet::new(),
-        NodeCoord(0, graph.len() - 1),  // super node with every attribute
-    );
-    let mut stack = VecDeque::from([origin_node]);
+    let origin_node_coord = NodeCoord(0, graph.data[0].len() - 1); // dummy node stores leaf nodes
+    let leafs: Vec<(NodeCoord, BitSet)> = graph.out(&origin_node_coord)
+        .iter().map(|n| (n.clone(), intersect(graph.node_content(n), new_node)))
+        .filter(|(_, int)| int.len() >= similarity_threshold as usize)
+        .collect();
+    let mut stack = VecDeque::from(leafs);
 
-    let new_node = graph.node_content(&new_id);
+    // there are no viable leaf nodes to start from
+    if stack.len() == 0 {
+        ops.push(EdgeOp::Add_RealReal(origin_node_coord.clone(), new_id.clone()));
+        return (ops, Vec::default());
+    }
 
     // given an "ideal" fork location, the intersections of the supersets
     // following the fork don't alter the intersection at all, but
@@ -63,18 +75,16 @@ pub fn find_forks(graph: &DiGraph, new_id: NodeCoord, similarity_threshold: u32)
     // ie: essentially following the intersection along a path.
 
     while stack.len() > 0 {
-        // note nodes are not visited at pop time
-        let pop = stack.pop_back().unwrap(); // considered as N1 -> x -> N2
-        let candidates = graph.out(&pop.2); // out edges
+        let (n1_id, n1_int) = stack.pop_back().unwrap();
+        let n1_int_len = n1_int.len();
+
+        visited.insert(n1_id.clone());
+        let candidates = graph.out(&n1_id); // out edges
 
         let mut dead_end = true; // assume dead end until proven otherwise
 
-        for n3_id in candidates {
-            // think
-            // (N1 -- x -> N2) -- y -> N3
-            // x = N2 & New, y = N3 & New
-
-            if visited.contains(n3_id) {
+        for n2_id in candidates {
+            if visited.contains(&n2_id) {
                 // this is not considered a dead end because
                 // one of the previous searches has already
                 // gone 'through' this node
@@ -82,23 +92,14 @@ pub fn find_forks(graph: &DiGraph, new_id: NodeCoord, similarity_threshold: u32)
                 continue;
             }
 
-            // note that the node is NOT visited at this point either.
-            // only if the node contains further edges that are worth
-            // forking. That is, the search goes down that path. If this
-            // search ends here and forks the previous edge, the
-            // node is not considered visited.
+            let n2 = graph.node_content(&n2_id);
+            let n2_int = intersect(n2, new_node);
+            let n2_int_len = n2_int.len();
 
-            let n3 = graph.node_content(&n3_id);
-            let n3_intersect = intersect(n3, new_node);
-            let n3_intersect_len = n3_intersect.len();
-
-            if n3_intersect_len >= pop.1.len() {
-                if n3_intersect_len >= similarity_threshold as usize {
+            if n2_int_len >= n1_int_len {
+                if n2_int_len >= similarity_threshold as usize {
                     // this path is viable
-                    stack.push_back((pop.2.clone(), n3_intersect, n3_id.clone()));
-                    // since we pushed the node (continuing down the path)
-                    // the next node is now considered visited
-                    visited.insert(n3_id.clone());
+                    stack.push_back((n2_id.clone(), n2_int));
                     dead_end = false;
                 }
             }
@@ -106,26 +107,41 @@ pub fn find_forks(graph: &DiGraph, new_id: NodeCoord, similarity_threshold: u32)
 
         // in the case of dead end, no new viable paths were found
         // we have two options:
-        //   1) fork the previous edge, or
-        //   2) make the new node -> previous node
-        //          That is, the new node is a (in top-down context) leaf node.
+        //   1) N1 --> New
+        //          That is, the new node is a (in bottom-up context) leaf node.
+        //          Only operation is to add the edge.
+        //   2) New, N1 --> x
+        //          Then, for a given N2 in N1.neighbors:
+        //              2a) x ---> N2
+        //              2b) x -/-> N2
+        //
+        //          This requires adding at least one edge and node
+        //          and moving (removing and adding) an edge.
         if dead_end {
-            // note that pop is in form (N1,x,N2):  N1 --- x --> N2
-
-            let n2 = graph.node_content(&pop.2);
-            if is_proper_subset(&pop.1, n2) {
-                // case 2, new node is a leaf node
-                forks.push((pop.2, None));
+            if n1_int == *new_node {
+                // case 1, new node is a leaf node
+                ops.push(EdgeOp::Add_RealReal(n1_id.clone(), new_id.clone()));
             } else {
-                // case 1, fork the previous edge
-                let intersect_id = {
+                // case 2, there is an inferred node
+                let inf_id = {
                     let next = new_nodes.len() as u16;
                     new_nodes
-                        .entry(pop.1)
+                        .entry(n1_int.clone())
                         .or_insert(next)
                 };
 
-                forks.push((pop.0, Some((*intersect_id, pop.2))));
+                ops.push(EdgeOp::Add_RealInferred(new_id.clone(), *inf_id));
+
+                // for each N2 in N1.neighbors: x --?--> N2
+                for n2_id in candidates {
+                    let n2 = graph.node_content(&n2_id);
+
+                    if is_proper_subset(n2, &n1_int) {
+                        // x ---> N2
+                        ops.push(EdgeOp::Del(n1_id.clone(), n2_id.clone()));
+                        ops.push(EdgeOp::Add_InferredReal(*inf_id, n2_id.clone()));
+                    }
+                }
             }
         }
     }
@@ -137,12 +153,13 @@ pub fn find_forks(graph: &DiGraph, new_id: NodeCoord, similarity_threshold: u32)
         let mut vec = Vec::<BitSet>::with_capacity(new_nodes.len());
         // unfolding the hashmap into vector
         for (node, i) in new_nodes {
+            println!("node: {:?}", node);
             vec.insert(i as usize, node);
         }
         vec
     };
 
-    return (forks, new_nodes_vec);
+    return (ops, new_nodes_vec);
 }
 
 /// Finds parents of a new node in a graph using a depth-first search.
