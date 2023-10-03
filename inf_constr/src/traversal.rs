@@ -150,10 +150,10 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
 
     let mut new_nodes_vec = {
         // this vector should never be resizing
-        let mut vec = Vec::<BitSet>::with_capacity(new_nodes.len());
+        let mut vec = vec![BitSet::default(); new_nodes.len()];
         // unfolding the hashmap into vector
+        let l = new_nodes.len();
         for (node, i) in new_nodes {
-            println!("node: {:?}", node);
             vec.insert(i as usize, node);
         }
         vec

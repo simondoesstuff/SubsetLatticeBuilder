@@ -145,7 +145,7 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
             }
         }
 
-        println!("Graph len: {:?}", graph.len());
+        println!("Graph size: {:?}", graph.len() - 1); // -1 accounts for dummy node
 
         // timing
         n_1_sqrt += layer.len();
@@ -175,9 +175,9 @@ fn main() {
     // todo remove hard coded paths
     let args = vec![
         args[0].clone(),
-        "../data/dirty/79867.txt".to_string(),
-        "../data/tmp/79867.soln".to_string(),
-        ".9".to_string(),
+        "../data/dirty/1109.txt".to_string(),
+        "../data/tmp/1109.soln".to_string(),
+        ".99".to_string(),
     ];
 
     let in_path = if let Some(path) = args.get(1) {
