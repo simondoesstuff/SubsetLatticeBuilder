@@ -2,6 +2,7 @@ use crate::digraph::{DiGraph, NodeCoord};
 use bit_set::{BitSet};
 use std::collections::{HashMap, HashSet, VecDeque};
 
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub enum EdgeOp {
     Add_RealReal(NodeCoord, NodeCoord),
     Add_RealInferred(NodeCoord, u16),
@@ -57,8 +58,8 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
     let mut visited = HashSet::<NodeCoord>::default();
 
     let origin_node_coord = NodeCoord(0, graph.data[0].len() - 1); // dummy node stores leaf nodes
-    let leafs: Vec<(NodeCoord, BitSet)> = graph.out(&origin_node_coord)
-        .iter().map(|n| (n.clone(), intersect(graph.node_content(n), new_node)))
+    let leafs: Vec<(NodeCoord, BitSet)> = graph.out(&origin_node_coord).iter()
+        .map(|n| (n.clone(), intersect(graph.node_content(n), new_node)))
         .filter(|(_, int)| int.len() >= similarity_threshold as usize)
         .collect();
     let mut stack = VecDeque::from(leafs);
@@ -69,6 +70,14 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
         return (ops, Vec::default());
     }
 
+    for (_, n_int) in stack.iter() {
+        let len = n_int.len();
+        if len == 0 {
+            // todo remove
+            panic!("leaf with empty intersection put in frontier. The similarity threshold was {:?} and the length of the new node was {:?}", similarity_threshold, new_node.len());
+        }
+    }
+
     // given an "ideal" fork location, the intersections of the supersets
     // following the fork don't alter the intersection at all, but
     // following past the fork to the subsets, will reduce the intersection.
@@ -77,6 +86,11 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
     while stack.len() > 0 {
         let (n1_id, n1_int) = stack.pop_back().unwrap();
         let n1_int_len = n1_int.len();
+
+        if n1_int_len == 0 {
+            // todo remove
+            panic!("n1 has an empty intersection");
+        }
 
         visited.insert(n1_id.clone());
         let candidates = graph.out(&n1_id); // out edges
@@ -146,15 +160,14 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
         }
     }
 
+    // unfolding hashmap into vector
     // the new_nodes map (node -> int) needs to be converted to a vec (int -> node)
 
-    let mut new_nodes_vec = {
+    let new_nodes_vec = {
         // this vector should never be resizing
         let mut vec = vec![BitSet::default(); new_nodes.len()];
-        // unfolding the hashmap into vector
-        let l = new_nodes.len();
         for (node, i) in new_nodes {
-            vec.insert(i as usize, node);
+            vec[i as usize] = node;
         }
         vec
     };
@@ -168,7 +181,7 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
 /// nodes than the new node.
 pub fn find_children_dfs(graph: &DiGraph, current_node_id: NodeCoord) -> Vec<NodeCoord> {
     let mut new_edges: Vec<NodeCoord> = Vec::default();
-    let origin_node = NodeCoord(0, graph.len() - 1);
+    let origin_node = NodeCoord(0, graph.len_nodes() - 1);
     let mut stack: VecDeque<NodeCoord> = VecDeque::from([origin_node]);
     let mut visited: HashSet<NodeCoord> = HashSet::default();
 

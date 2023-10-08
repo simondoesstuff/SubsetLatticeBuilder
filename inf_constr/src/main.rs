@@ -94,7 +94,7 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
     // timing
     let t_1 = std::time::Instant::now();
     let mut n_1_sqrt: usize = 0;
-    let n_2 = graph.len() as f64 * graph.len() as f64;
+    let n_2 = graph.len_nodes() as f64 * graph.len_nodes() as f64;
 
     // start the algorithm
     for layer_key in layer_keys.iter().skip(1) {
@@ -108,13 +108,19 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
                 let new_node_content = graph.node_content(&new_node_id);
                 // note, setting the threshold to length means only direct parent -> child edges are
                 // considered, no inferred nodes
-                let similarity_threshold: u32 = (similarity_coefficient * (new_node_content.len() as f32)) as u32;
+                let len: f32 = new_node_content.len() as f32;
+                // the ceil is important because a node len 1 can't have a similarity threshold of 0
+                // because it would permit inference of null nodes
+                let similarity_threshold: u32 = (similarity_coefficient * len).ceil() as u32;
                 let (results, inf_nodes) = inferred_analysis(&graph, new_node_id.clone(), similarity_threshold);
                 (results, inf_nodes)
             })
             .collect(); // collect -- join the threads
 
         graph.push_layer();
+
+        let mut inf_nodes = HashMap::<BitSet, NodeCoord>::default();
+        let mut seen_ops = HashSet::<EdgeOp>::default();
 
         for (ops, inferred_nodes) in results {
             // Forks are (usually) in form:     N1 --- x -> N2
@@ -123,33 +129,78 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
             // nodes are first added to the graph and the ids are adjusted
             // to represent the coordinates in the graph.
 
-            let assigned_coords = graph.bulk_add(inferred_nodes);
+            // Removing Duplicate Operations
+            //     Particularly tricky because duplicates can occur in inferred nodes
+            //      and the edge operations and the edge operations depend on relative
+            //      ids corresponding to inferred nodes.
+            //
+            //     Approach:   1. HashMap of inferred nodes to their coordinates
+            //                    as they are added to the graph
+            //                 2. Map edge operations in terms of the coordinates
+            //                 3. HashSet of edge operations to remove duplicates
 
-            for op in ops {
-                match op {
-                    EdgeOp::Add_RealReal(from, to) => {
-                        graph.edge(&from, to);
+            let mut inf_coords = Vec::<NodeCoord>::with_capacity(inferred_nodes.len());
+
+            for inf in inferred_nodes.into_iter() {
+                if inf.len() == 0 {
+                    // todo remove
+                    panic!("Empty inferred node");
+                }
+
+                let coord = inf_nodes.entry(inf.clone()).or_insert_with(|| {
+                    graph.add_node(inf)
+                });
+                inf_coords.push(coord.clone());
+            }
+
+            for op1 in ops {
+                let op2 = match op1 {
+                    EdgeOp::Add_RealReal(_, _) => {
+                        op1
                     },
                     EdgeOp::Add_RealInferred(from, to) => {
-                        let to = &assigned_coords[to as usize];
-                        graph.edge(&from, to.clone());
+                        let to = &inf_coords[to as usize];
+                        EdgeOp::Add_RealReal(from, to.clone())
                     },
                     EdgeOp::Add_InferredReal(from, to) => {
-                        let from = &assigned_coords[from as usize];
-                        graph.edge(from, to);
+                        let from = &inf_coords[from as usize];
+                        EdgeOp::Add_RealReal(from.clone(), to)
                     },
-                    EdgeOp::Del(from, to) => {
-                        graph.remove_edge(&from, &to);
+                    EdgeOp::Del(_, _) => {
+                        op1
+                    }
+                };
+
+                // op2 is the mapping of op1 to a real-real operation
+                // adding or deleting, all real-real operations should be unique
+                // because adding or deleting the same edge twice is redundant
+                // and separate threads with conflicting adding/deleting operations
+                // should not be allowed
+
+                if !seen_ops.contains(&op2) {
+                    // todo suspicious that some duplicate ops are getting through
+                    // because (x,y) != (y,x)
+
+                    seen_ops.insert(op2.clone());
+                    match op2 {
+                        EdgeOp::Add_RealReal(from, to) => {
+                            graph.edge(&from, to);
+                        },
+                        EdgeOp::Del(from, to) => {
+                            graph.remove_edge(&from, &to);
+                        },
+                        _ => unreachable!()
                     }
                 }
             }
         }
 
-        println!("Graph size: {:?}", graph.len() - 1); // -1 accounts for dummy node
+        // nodes - 1 accounts for dummy node
+        println!("Graph size: {:?} nodes, {:?} edges", graph.len_nodes() - 1, graph.len_edges());
 
         // timing
         n_1_sqrt += layer.len();
-        let t_2: f64 = (std::time::Instant::now() - t_1).as_millis() as f64 / 1000 as f64;
+        let t_2: f64 = (std::time::Instant::now() - t_1).as_millis() as f64 / 1000f64;
         let n_1 = n_1_sqrt as f64 * n_1_sqrt as f64;
         let progress = n_1 / n_2;
         let remaining_time = t_2 * n_2 / n_1 - t_2;
@@ -175,9 +226,9 @@ fn main() {
     // todo remove hard coded paths
     let args = vec![
         args[0].clone(),
-        "../data/dirty/1109.txt".to_string(),
-        "../data/tmp/1109.soln".to_string(),
-        ".99".to_string(),
+        "../data/dirty/79867.txt".to_string(),
+        "../data/tmp/79867.soln".to_string(),
+        ".5".to_string(),
     ];
 
     let in_path = if let Some(path) = args.get(1) {

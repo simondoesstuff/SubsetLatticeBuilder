@@ -23,7 +23,8 @@ pub type Node = BitSet;
 
 pub struct DiGraph {
     pub data: Vec<Vec<(Node, EdgeList)>>,
-    len: usize,
+    len_node: usize,
+    len_edge: usize,
 }
 
 impl DiGraph {
@@ -31,7 +32,8 @@ impl DiGraph {
         let nodes = default_nodes.clone().unwrap_or_default();
 
         DiGraph {
-            len: nodes.len(),
+            len_node: nodes.len(),
+            len_edge: 0,
             data: vec![
                 {
                     nodes
@@ -54,18 +56,19 @@ impl DiGraph {
     pub fn splice_edge(&mut self, from: &NodeCoord, middle: NodeCoord, to: NodeCoord) {
         // take edge from --> to
         // and replace with from --> middle --> to
-
-        self.data[from.0 as usize][from.1].1.retain(|n| n != &to);
-        self.data[middle.0 as usize][middle.1].1.push(to);
-        self.data[from.0 as usize][from.1].1.push(middle);
+        self.remove_edge(from, &to);
+        self.edge(from, middle.clone());
+        self.edge(&middle, to.clone());
     }
 
     pub fn edge(&mut self, from: &NodeCoord, to: NodeCoord) {
+        self.len_edge += 1;
         self.data[from.0 as usize][from.1].1.push(to);
     }
 
     pub fn remove_edge(&mut self, from: &NodeCoord, to: &NodeCoord) {
-        self.data[from.0 as usize][from.1].1.retain(|n| n != to);
+        self.len_edge -= 1;
+        self.data[from.0 as usize][from.1].1.retain(|n| *n != *to);
     }
 
     /// Out edges from a node.
@@ -81,8 +84,6 @@ impl DiGraph {
         self.data.push(Vec::with_capacity(prev_capacity));
     }
 
-    /// Finds the coordinate of the latest node added to the graph.
-    /// That is, the greatest node ID on the greatest layer.
     pub fn next_open_coord(&self) -> NodeCoord {
         let top_layer = self.data.len() - 1;
         let top_node = self.data[top_layer].len();
@@ -92,7 +93,7 @@ impl DiGraph {
     /// Adds a set of nodes to the latest layer of the graph.
     /// Returns the coordinates that were assigned.
     pub fn bulk_add(&mut self, new_nodes: Vec<Node>) -> Vec<NodeCoord> {
-        self.len += new_nodes.len();
+        self.len_node += new_nodes.len();
         let mut coords = Vec::with_capacity(new_nodes.len());
         let top = self.next_open_coord();
 
@@ -105,9 +106,19 @@ impl DiGraph {
         coords
     }
 
-    /// Amount of nodes in the graph.
-    pub fn len(&self) -> usize {
-        self.len
+    pub fn add_node(&mut self, new_node: Node) -> NodeCoord {
+        self.len_node += 1;
+        let coord = self.next_open_coord();
+        self.data[coord.0 as usize].push((new_node, Vec::new()));
+        coord
+    }
+
+    pub fn len_nodes(&self) -> usize {
+        self.len_node
+    }
+
+    pub fn len_edges(&self) -> usize {
+        self.len_edge
     }
 }
 
