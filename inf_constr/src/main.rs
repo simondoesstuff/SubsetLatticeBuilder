@@ -68,15 +68,7 @@ fn export_graph(path: &str, graph: &DiGraph) {
 }
 
 fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
-    // temporary variables
     let mut node_contents = parse_input(in_path); // nodes are organized by index
-    // todo this no longer is necessary, just use dummy
-    let super_node = node_contents.iter().fold(BitSet::new(), |mut acc, node| {
-        acc.union_with(node);
-        acc
-    });
-    // let super_node = BitSet::new();
-    node_contents.push(super_node);
 
     // separate nodes into layers (by size)
     let layers: HashMap<usize, Vec<usize>> = nodes_by_size(&node_contents);
@@ -89,6 +81,9 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
         keys
     };
 
+    let super_node = BitSet::new();
+    node_contents.push(super_node);
+
     let mut graph = DiGraph::new(Some(node_contents));
 
     // timing
@@ -97,7 +92,7 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
     let n_2 = graph.len_nodes() as f64 * graph.len_nodes() as f64;
 
     // start the algorithm
-    for layer_key in layer_keys.iter().skip(1) {
+    for layer_key in layer_keys.iter() {
         // entire layer is handled at once
         let layer = &layers[layer_key];
 
@@ -142,11 +137,6 @@ fn inf_constr_alg(in_path: &str, out_path: &str, similarity_coefficient: f32) {
             let mut inf_coords = Vec::<NodeCoord>::with_capacity(inferred_nodes.len());
 
             for inf in inferred_nodes.into_iter() {
-                if inf.len() == 0 {
-                    // todo remove
-                    panic!("Empty inferred node");
-                }
-
                 let coord = inf_nodes.entry(inf.clone()).or_insert_with(|| {
                     graph.add_node(inf)
                 });
@@ -226,9 +216,9 @@ fn main() {
     // todo remove hard coded paths
     let args = vec![
         args[0].clone(),
-        "../data/dirty/79867.txt".to_string(),
-        "../data/tmp/79867.soln".to_string(),
-        ".5".to_string(),
+        "../data/dirty/3515.txt".to_string(),
+        "../data/tmp/3515_s0.soln".to_string(),
+        "0".to_string(),
     ];
 
     let in_path = if let Some(path) = args.get(1) {

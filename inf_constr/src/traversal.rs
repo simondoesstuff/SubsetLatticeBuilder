@@ -70,14 +70,6 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
         return (ops, Vec::default());
     }
 
-    for (_, n_int) in stack.iter() {
-        let len = n_int.len();
-        if len == 0 {
-            // todo remove
-            panic!("leaf with empty intersection put in frontier. The similarity threshold was {:?} and the length of the new node was {:?}", similarity_threshold, new_node.len());
-        }
-    }
-
     // given an "ideal" fork location, the intersections of the supersets
     // following the fork don't alter the intersection at all, but
     // following past the fork to the subsets, will reduce the intersection.
@@ -86,11 +78,6 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
     while stack.len() > 0 {
         let (n1_id, n1_int) = stack.pop_back().unwrap();
         let n1_int_len = n1_int.len();
-
-        if n1_int_len == 0 {
-            // todo remove
-            panic!("n1 has an empty intersection");
-        }
 
         visited.insert(n1_id.clone());
         let candidates = graph.out(&n1_id); // out edges
@@ -133,8 +120,11 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
         //          and moving (removing and adding) an edge.
         if dead_end {
             if n1_int == *new_node {
-                // case 1, new node is a leaf node
-                ops.push(EdgeOp::Add_RealReal(n1_id.clone(), new_id.clone()));
+                let n1 = graph.node_content(&n1_id);
+                if n1 != new_node { // prevent self-loops
+                    // case 1, new node is a leaf node
+                    ops.push(EdgeOp::Add_RealReal(n1_id.clone(), new_id.clone()));
+                }
             } else {
                 // case 2, there is an inferred node
                 let inf_id = {
