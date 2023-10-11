@@ -7,7 +7,7 @@ pub enum EdgeOp {
     Add_RealReal(NodeCoord, NodeCoord),
     Add_RealInferred(NodeCoord, u16),
     Add_InferredReal(u16, NodeCoord),
-    Del(NodeCoord, NodeCoord)
+    Del(NodeCoord, NodeCoord),
 }
 
 fn is_proper_subset(a: &BitSet, b: &BitSet) -> bool {
@@ -77,34 +77,60 @@ pub fn inferred_analysis(graph: &DiGraph, new_id: NodeCoord, similarity_threshol
 
     while stack.len() > 0 {
         let (n1_id, n1_int) = stack.pop_back().unwrap();
-        let n1_int_len = n1_int.len();
 
         visited.insert(n1_id.clone());
         let candidates = graph.out(&n1_id); // out edges
 
         let mut dead_end = true; // assume dead end until proven otherwise
 
-        for n2_id in candidates {
-            if visited.contains(&n2_id) {
-                // this is not considered a dead end because
-                // one of the previous searches has already
-                // gone 'through' this node
+        if candidates.len() == 1 {
+            // Only 1 Candidate, search while:
+            //      1) next intersection meets threshold
+            //      2) next intersection is at least as large as current intersection
+
+            let candidate_id = candidates[0].clone();
+
+            if visited.contains(&candidate_id) {
                 dead_end = false;
-                continue;
+            } else {
+                let n2 = graph.node_content(&candidate_id);
+                let n2_int = intersect(n2, new_node);
+                let n2_int_len = n2_int.len();
+                let n1_int_len = n1_int.len();
+
+                if n2_int_len >= n1_int_len {
+                    if n2_int_len >= similarity_threshold as usize {
+                        // this path is viable
+                        stack.push_back((candidate_id.clone(), n2_int));
+                        dead_end = false;
+                    }
+                }
             }
+        } else {
+            // Junction, search while:
+            //      1) next intersection meets threshold
 
-            let n2 = graph.node_content(&n2_id);
-            let n2_int = intersect(n2, new_node);
-            let n2_int_len = n2_int.len();
+            for n2_id in candidates {
+                if visited.contains(&n2_id) {
+                    // this is not considered a dead end because
+                    // one of the previous searches has already
+                    // gone 'through' this node
+                    dead_end = false;
+                    continue;
+                }
 
-            if n2_int_len >= n1_int_len {
+                let n2 = graph.node_content(&n2_id);
+                let n2_int = intersect(n2, new_node);
+                let n2_int_len = n2_int.len();
+
                 if n2_int_len >= similarity_threshold as usize {
                     // this path is viable
                     stack.push_back((n2_id.clone(), n2_int));
                     dead_end = false;
                 }
             }
-        }
+        }  // note that looking up node_contents for candidates is being done (somewhat) redundantly,
+        // but it is basically free, backed by vector indexing
 
         // in the case of dead end, no new viable paths were found
         // we have two options:

@@ -216,9 +216,9 @@ fn main() {
     // todo remove hard coded paths
     let args = vec![
         args[0].clone(),
-        "../data/dirty/3515.txt".to_string(),
-        "../data/tmp/3515_s0.soln".to_string(),
-        "0".to_string(),
+        "../data/dirty/1109.txt".to_string(),
+        "../data/tmp/1109.soln".to_string(),
+        ".9".to_string(),
     ];
 
     let in_path = if let Some(path) = args.get(1) {
